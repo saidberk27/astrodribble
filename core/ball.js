@@ -14,24 +14,15 @@ export class Ball {
         // Topun başlangıç pozisyonu (sahneye ilk eklendiğinde nerede olacağı)
         this.mesh.position.set(2, 0.3, 0);
 
-        // Top özellikleri
+        // Atış mekaniği değişkenleri
         this.isHeld = false;
-        this.holder = null; // Topu tutan oyuncu (THREE.Object3D veya Mesh)
-        this.throwForce = new THREE.Vector3(); // Atış kuvveti için kullanılabilir
-
-        // Top fiziği için değişkenler
+        this.holder = null;
         this.velocity = new THREE.Vector3();
-        this.gravity = 0.015; // Yerçekimi ivmesi
-        this.isMoving = false; // Topun havada olup olmadığını belirtir
+        this.gravity = 0.015;
+        this.isMoving = false;
 
-        // Topun oyuncuya göre yerel ofseti
-        // Bu, oyuncu 0 derece döndüğünde topun oyuncuya göre nerede duracağını belirler.
-        // x: sağ/sol (negatif sol), y: yukarı/aşağı, z: ön/arka (pozitif ön)
-        // Şu anki ayar: Oyuncunun tam 0.5 birim önünde.
+        // Yerel ofset
         this.localOffset = new THREE.Vector3(0.0, 0.0, -0.5);
-
-        // Quaternion nesnesi, her karede yeniden oluşturmak yerine bir kez oluşturulup güncellenebilir.
-        // Bu, performansı artırır.
         this.tempQuaternion = new THREE.Quaternion();
     }
 
@@ -78,19 +69,12 @@ export class Ball {
                 }
             }
         }
-    }
-
-    throw(direction) {
+    } throw(direction) {
         if (this.isHeld) {
             this.isHeld = false;
             this.holder = null;
             this.isMoving = true;
-
-            // Atış yönü ve kuvveti
-            // direction vektörü, atışın dünya koordinatlarındaki yönünü temsil etmeli.
-            // Örneğin, oyuncunun ileri yönü + kamera yönü gibi.
-            this.velocity.copy(direction).multiplyScalar(0.4);
-            this.velocity.y = 0.3; // Yukarı doğru başlangıç hızı ekle
+            this.velocity.copy(direction);
         }
     }
 
@@ -100,5 +84,36 @@ export class Ball {
             this.holder = player;
             this.velocity.set(0, 0, 0); // Topu tuttuğunda hızını sıfırla
         }
+    }
+
+    checkHoopCollision(hoops) {
+        if (!this.isMoving) return;
+
+        hoops.forEach(hoop => {
+            const hoopPos = new THREE.Vector3(0, 3.05, hoop.position.z); // Pota çemberinin yüksekliği
+            const distance = this.mesh.position.distanceTo(hoopPos);
+
+            // Top pota hizasındaysa ve çember yakınındaysa
+            if (Math.abs(this.mesh.position.y - hoopPos.y) < 0.3 && distance < this.hoopRadius) {
+                if (!this.hasScored) {
+                    console.log("Basket!");
+                    this.hasScored = true;
+
+                    // Skor durumunu sıfırla
+                    if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
+                    this.scoreTimeout = setTimeout(() => {
+                        this.hasScored = false;
+                    }, 1000);
+                }
+            }
+
+            // Pota ile çarpışma kontrolü
+            if (distance < this.hoopRadius + 0.1) {
+                // Çarpışma tepkisi
+                const normal = this.mesh.position.clone().sub(hoopPos).normalize();
+                this.velocity.reflect(normal);
+                this.velocity.multiplyScalar(0.7); // Enerji kaybı
+            }
+        });
     }
 }

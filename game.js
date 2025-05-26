@@ -9,6 +9,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 export const gltf_loader = new GLTFLoader();
 let updatePlayerMovement;
 let ball;
+let hoops = []; // Potaları tutacak dizi
 
 function init() {
     const scene = createScene();
@@ -23,15 +24,34 @@ function init() {
     ball = new Ball();
     scene.add(ball.mesh);
 
-    // Oyuncu kontrollerini ayarla (kamera parametresini ekledik)
-    updatePlayerMovement = setupPlayerControls(player, ball, camera);
+    // Potaları oluştur ve diziye ekle
+    gltf_loader.load(
+        'models/basketball_hoop2.glb',
+        function (gltf) {
+            const hoop1 = gltf.scene;
+            hoop1.scale.set(0.01, 0.01, 0.01);
+            hoop1.position.set(0, 2, 12.5);
+            hoop1.rotation.y = Math.PI;
+            scene.add(hoop1);
+            hoops.push(hoop1);
+
+            const hoop2 = gltf.scene.clone();
+            hoop2.position.set(0, 2, -12.5);
+            hoop2.rotation.y = Math.PI;
+            scene.add(hoop2);
+            hoops.push(hoop2);
+        }
+    );
+
+    // Oyuncu kontrollerini ayarla
+    updatePlayerMovement = setupPlayerControls(player, ball);
 
     // Kamera takip sistemini oyuncuya bağla
     enableCameraMotions(renderer, player);
 
-    handleWindowResize(camera); createLights();
+    handleWindowResize(camera);
+    createLights();
     createCourt();
-    createHoops();
 
     animate(renderer, scene, camera);
 }
@@ -43,6 +63,7 @@ function animate(renderer, scene, camera) {
     }
     if (ball) {
         ball.update();
+        ball.checkHoopCollision(hoops); // Pota etkileşimini kontrol et
     }
     updateCameraPosition();
     renderer.render(scene, camera);

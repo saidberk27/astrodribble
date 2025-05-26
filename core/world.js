@@ -1,7 +1,4 @@
 import * as THREE from 'three';
-import { Line2 } from 'three/examples/jsm/lines/Line2';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial';
-import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry';
 import { gltf_loader } from '../game.js';
 import { scene } from './scene.js';
 

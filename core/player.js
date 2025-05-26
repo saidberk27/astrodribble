@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ShootingSystem } from './shoot.js';
 
 export class Player {
     constructor() {
@@ -60,31 +61,51 @@ export function createPlayer() {
 
 export function setupPlayerControls(player, ball) {
     const keysPressed = {};
+    const shootingSystem = new ShootingSystem();
 
     // Tuş basma olaylarını dinle
     window.addEventListener('keydown', (event) => {
         keysPressed[event.key] = true;
-
-        // Space tuşu ile top tutma/atma
-        if (event.code === 'Space') {
-            if (!ball.isHeld) {
-                // Top ile oyuncu arasındaki mesafeyi kontrol et
-                const distance = player.mesh.position.distanceTo(ball.mesh.position);
-                if (distance < 2) { // 2 birim mesafe içindeyse topu tutabilir
-                    ball.pickUp(player.mesh);
-                }
-            } else if (ball.holder === player.mesh) {
-                // Topu at
-                ball.throw(player.direction);
-            }
-        }
     });
 
     window.addEventListener('keyup', (event) => {
         keysPressed[event.key] = false;
+
+        // Space tuşu ile top tutma
+        if (event.code === 'Space' && !shootingSystem.isCharging) {
+            if (!ball.isHeld) {
+                const distance = player.mesh.position.distanceTo(ball.mesh.position);
+                if (distance < 2) {
+                    ball.pickUp(player.mesh);
+                }
+            }
+        }
+    });
+
+    // Mouse olaylarını dinle
+    window.addEventListener('mousedown', (event) => {
+        if (event.button === 0 && ball.isHeld) { // Sol tıklama
+            shootingSystem.startCharging(ball);
+        }
+    });
+
+    window.addEventListener('mouseup', (event) => {
+        if (event.button === 0 && ball.isHeld) { // Sol tıklama bırakıldı
+            shootingSystem.releaseCharge(ball);
+        }
+    });
+
+    // Pencere kapatıldığında temizlik
+    window.addEventListener('beforeunload', () => {
+        shootingSystem.dispose();
     });
 
     return function updatePlayerMovement() {
         player.move(keysPressed);
+
+        // Top tutuluyorsa ve atış şarj ediliyorsa
+        if (ball.isHeld && shootingSystem.isCharging) {
+            shootingSystem.updateCharging(ball);
+        }
     };
 }
