@@ -1,0 +1,20 @@
+{
+  "dependencies": {
+    "three": "^0.176.0"
+  },
+  "name": "astrodribble",
+  "version": "1.0.0",
+  "main": "game.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}
