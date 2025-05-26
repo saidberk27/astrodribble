@@ -7,26 +7,28 @@ export class Player {
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.position.set(0, 1, 0);
 
-        // Oyuncu yönü
-        this.direction = new THREE.Vector3(1, 0, 0);
+        this.direction = new THREE.Vector3(0, 0, -1); // İleri yön
         this.speed = 0.2;
+        this.rotationSpeed = 0.1;
     }
 
     move(keysPressed) {
-        // Hareket vektörünü oyuncunun baktığı yöne göre hesapla
+        // Hareket vektörünü oluştur
         const moveVector = new THREE.Vector3(0, 0, 0);
 
         if (keysPressed['ArrowUp']) {
-            moveVector.z += this.speed;
+            moveVector.z = -this.speed; // İleri
         }
         if (keysPressed['ArrowDown']) {
-            moveVector.z -= this.speed;
+            moveVector.z = this.speed; // Geri
         }
+
+        // Dönüş kontrolü
         if (keysPressed['ArrowLeft']) {
-            moveVector.x += this.speed;
+            this.mesh.rotation.y += this.rotationSpeed;
         }
         if (keysPressed['ArrowRight']) {
-            moveVector.x -= this.speed;
+            this.mesh.rotation.y -= this.rotationSpeed;
         }
 
         // Hareket vektörünü oyuncunun yönüne göre döndür
@@ -34,33 +36,9 @@ export class Player {
 
         // Pozisyonu güncelle
         this.mesh.position.add(moveVector);
-    }
 
-    updateDirection(mouseX, mouseY, camera) {
-        // Ekrandaki mouse pozisyonunu dünya koordinatlarına çevir
-        const mouse = new THREE.Vector2(
-            (mouseX / window.innerWidth) * 2 - 1,
-            -(mouseY / window.innerHeight) * 2 + 1
-        );
-
-        // Mouse pozisyonundan ışın oluştur
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, camera);
-
-        // Oyuncunun y ekseni hizasında bir düzlem oluştur
-        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-        const target = new THREE.Vector3();
-
-        // Işının düzlemle kesiştiği noktayı bul
-        raycaster.ray.intersectPlane(plane, target);
-
-        // Oyuncudan kesişim noktasına doğru yön vektörü hesapla
-        this.direction.subVectors(target, this.mesh.position).normalize();
-        this.direction.y = 0; // Yatay düzlemde tutmak için y bileşenini sıfırla
-
-        // Oyuncuyu döndür
-        const angle = Math.atan2(this.direction.x, this.direction.z);
-        this.mesh.rotation.y = angle;
+        // Yön vektörünü güncelle
+        this.direction.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
     }
 
     getPosition() {
@@ -70,22 +48,18 @@ export class Player {
     getDirection() {
         return this.direction;
     }
+
+    getRotation() {
+        return this.mesh.rotation.y;
+    }
 }
 
 export function createPlayer() {
     return new Player();
 }
 
-export function setupPlayerControls(player, ball, camera) {
+export function setupPlayerControls(player, ball) {
     const keysPressed = {};
-    let mouseX = 0;
-    let mouseY = 0;
-
-    // Mouse pozisyonunu takip et
-    window.addEventListener('mousemove', (event) => {
-        mouseX = event.clientX;
-        mouseY = event.clientY;
-    });
 
     // Tuş basma olaylarını dinle
     window.addEventListener('keydown', (event) => {
@@ -100,7 +74,7 @@ export function setupPlayerControls(player, ball, camera) {
                     ball.pickUp(player.mesh);
                 }
             } else if (ball.holder === player.mesh) {
-                // Topu mouse'un gösterdiği yöne doğru at
+                // Topu at
                 ball.throw(player.direction);
             }
         }
@@ -112,6 +86,5 @@ export function setupPlayerControls(player, ball, camera) {
 
     return function updatePlayerMovement() {
         player.move(keysPressed);
-        player.updateDirection(mouseX, mouseY, camera);
     };
 }

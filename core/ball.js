@@ -28,7 +28,7 @@ export class Ball {
         // Bu, oyuncu 0 derece döndüğünde topun oyuncuya göre nerede duracağını belirler.
         // x: sağ/sol (negatif sol), y: yukarı/aşağı, z: ön/arka (pozitif ön)
         // Şu anki ayar: Oyuncunun tam 0.5 birim önünde.
-        this.localOffset = new THREE.Vector3(0.0, 0.0, 0.5);
+        this.localOffset = new THREE.Vector3(0.0, 0.0, -0.5);
 
         // Quaternion nesnesi, her karede yeniden oluşturmak yerine bir kez oluşturulup güncellenebilir.
         // Bu, performansı artırır.

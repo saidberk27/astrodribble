@@ -26,7 +26,9 @@ function init() {
     // Oyuncu kontrollerini ayarla (kamera parametresini ekledik)
     updatePlayerMovement = setupPlayerControls(player, ball, camera);
 
-    enableCameraMotions(renderer);
+    // Kamera takip sistemini oyuncuya bağla
+    enableCameraMotions(renderer, player);
+
     handleWindowResize(camera); createLights();
     createCourt();
     createHoops();
