@@ -1,19 +1,19 @@
 import { createScene, createRenderer, handleWindowResize } from './core/scene.js';
 import { createCamera, enableCameraMotions, updateCameraPosition } from './core/camera.js';
-import { createLights, createCourt } from './core/world.js';
+import { createLights, createCourt, createHoops } from './core/world.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 
-// Game state variables will be managed here if needed
 
+export const gltf_loader = new GLTFLoader();
 function init() {
     const scene = createScene();
     const camera = createCamera();
     const renderer = createRenderer();
 
     enableCameraMotions(renderer);
-    handleWindowResize(camera);
-
-    createLights();
+    handleWindowResize(camera); createLights();
     createCourt();
+    createHoops();
 
     animate(renderer, scene, camera);
 }
