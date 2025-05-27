@@ -4,12 +4,11 @@ import { createLights, createCourt, createHoops } from './core/world.js';
 import { createPlayer, setupPlayerControls } from './core/player.js';
 import { Ball } from './core/ball.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-
+import { updatePhysics } from './core/physics.js';
 
 export const gltf_loader = new GLTFLoader();
 let updatePlayerMovement;
 let ball;
-let hoops = []; // Potaları tutacak dizi
 
 function init() {
     const scene = createScene();
@@ -24,25 +23,6 @@ function init() {
     ball = new Ball();
     scene.add(ball.mesh);
 
-    // Potaları oluştur ve diziye ekle
-    gltf_loader.load(
-        'models/basketball_hoop2.glb',
-        function (gltf) {
-            const hoop1 = gltf.scene;
-            hoop1.scale.set(0.01, 0.01, 0.01);
-            hoop1.position.set(0, 2, 12.5);
-            hoop1.rotation.y = Math.PI;
-            scene.add(hoop1);
-            hoops.push(hoop1);
-
-            const hoop2 = gltf.scene.clone();
-            hoop2.position.set(0, 2, -12.5);
-            hoop2.rotation.y = Math.PI;
-            scene.add(hoop2);
-            hoops.push(hoop2);
-        }
-    );
-
     // Oyuncu kontrollerini ayarla
     updatePlayerMovement = setupPlayerControls(player, ball);
 
@@ -52,19 +32,29 @@ function init() {
     handleWindowResize(camera);
     createLights();
     createCourt();
+    createHoops();
 
     animate(renderer, scene, camera);
 }
 
 function animate(renderer, scene, camera) {
     requestAnimationFrame(() => animate(renderer, scene, camera));
+
+    // Fizik motorunu güncelle
+    updatePhysics();
+
+    // Oyuncu ve top güncellemeleri
     if (updatePlayerMovement) {
         updatePlayerMovement();
     }
     if (ball) {
         ball.update();
-        ball.checkHoopCollision(hoops); // Pota etkileşimini kontrol et
+
+        // Pota pozisyonları için basket kontrolü
+        ball.checkBasket({ x: 0, y: 3.05, z: 12.5 });  // İlk pota
+        ball.checkBasket({ x: 0, y: 3.05, z: -12.5 }); // İkinci pota
     }
+
     updateCameraPosition();
     renderer.render(scene, camera);
 }
