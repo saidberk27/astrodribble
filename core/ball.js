@@ -1,10 +1,16 @@
+// ball.js
+
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+import { world, createBallPhysics } from './physics.js';
 
 export class Ball {
+
     constructor(gravityValue = 0.015) { // Varsayılan değer Dünya yerçekimi, game.js'den ayarlanacak
         // Top geometrisi ve materyali
         const geometry = new THREE.SphereGeometry(0.3, 32, 32);
         const material = new THREE.MeshPhongMaterial({
+
             color: 0xf85e00,
             roughness: 0.7,
             metalness: 0.1
@@ -115,13 +121,15 @@ export class Ball {
             // Atıştan hemen sonra skor kontrolünü aktifleştir
             this.hasScored = false;
             if(this.scoreTimeout) clearTimeout(this.scoreTimeout);
+
         }
     }
 
     pickUp(player) {
-        if (!this.isHeld && !this.isMoving) {
+        if (!this.isHeld && this.body.velocity.lengthSquared() < 1.5) { // Hız eşiği biraz daha artırıldı
             this.isHeld = true;
             this.holder = player;
+
             this.velocity.set(0, 0, 0); // Topu tuttuğunda hızını sıfırla
             this.hasScored = false;     // Topu alınca skor durumu sıfırlanmalı
         }
@@ -159,10 +167,14 @@ export class Ball {
 
                     if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
                     this.scoreTimeout = setTimeout(() => {
+
                         this.hasScored = false;
                     }, 2000); // Aynı atışla tekrar skor olmasın diye 2 saniye bekle
                 }
+
             }
         });
+
     }
+
 }

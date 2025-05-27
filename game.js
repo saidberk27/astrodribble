@@ -4,6 +4,7 @@ import { createLights, createCourt, createHoops } from './core/world.js';
 import { createPlayer, setupPlayerControls } from './core/player.js';
 import { Ball } from './core/ball.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'; // <-- YENİ IMPORT
 import * as THREE from 'three';
@@ -246,11 +247,16 @@ function init() {
 
 function animate(renderer, sceneRef, cameraRef) {
     animationFrameId = requestAnimationFrame(() => animate(renderer, sceneRef, cameraRef));
+
     if (updatePlayerMovement) {
         updatePlayerMovement();
     }
-    if (ball) {
+    if (player && typeof player.update === 'function') {
+        player.update();
+    }
+    if (ball && typeof ball.update === 'function') {
         ball.update();
+
         ball.checkHoopCollision(hoops, incrementScore);
     }
     updateCameraPosition();
@@ -259,3 +265,4 @@ function animate(renderer, sceneRef, cameraRef) {
 
 // Oyunu başlat
 init();
+

@@ -1,4 +1,7 @@
+// core/player.js
+
 import * as THREE from 'three';
+
 import { ShootingSystem } from './shoot.js';
 import { fbx_loader, levelSettings, currentLevel } from '../game.js';
 import { scene } from './scene.js';
@@ -95,7 +98,12 @@ export class Player {
 
         if (previousAction && previousAction !== newAction) {
             previousAction.fadeOut(crossFadeDuration);
+
         }
+    };
+    return playerObject;
+}
+
 
         newAction
             .reset()
@@ -120,7 +128,10 @@ export class Player {
         // Önceki animasyonu yavaşça sonlandır
         if (this.actions[previousActionName] && this.actions[previousActionName] !== actionToPlay) {
             this.actions[previousActionName].fadeOut(crossFadeDuration);
+
         }
+    };
+
 
         // Yeni animasyonu başlat
         actionToPlay
@@ -225,9 +236,12 @@ export class Player {
     getRotation() { return this.mesh.rotation.y; }
 }
 
-export function createPlayer() {
-    return new Player();
-}
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+
 
 export function setupPlayerControls(player, ball, hoops) {
     const keysPressed = {};
@@ -295,6 +309,7 @@ export function setupPlayerControls(player, ball, hoops) {
             shootingSystem.update(ball);
         } else {
             shootingSystem.hideTrajectory();
+
         }
     };
 }
