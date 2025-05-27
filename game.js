@@ -4,10 +4,12 @@ import { createLights, createCourt, createHoops } from './core/world.js';
 import { createPlayer, setupPlayerControls } from './core/player.js';
 import { Ball } from './core/ball.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'; // HDRI için
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'; // <-- YENİ IMPORT
 import * as THREE from 'three';
 
 export const gltf_loader = new GLTFLoader();
+export const fbx_loader = new FBXLoader(); // <-- YENİ LOADER
 let updatePlayerMovement; // setupPlayerControls'dan dönen fonksiyonu saklar
 let ball;
 export let hoops = [];

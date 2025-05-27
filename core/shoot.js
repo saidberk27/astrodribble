@@ -18,20 +18,21 @@ function calculateTrajectory(startPos, startVel, gravity, numSteps) {
 }
 
 export class ShootingSystem {
-    constructor() {
+    constructor(playerRef) { // <-- playerRef parametresi eklendi
         this.mousePosition = { x: 0, y: 0 };
         this.throwPower = 0;
         this.maxThrowPower = 1.0;
         this.powerBarElement = this.createPowerBar();
         this.trajectoryLine = null;
         this.gravity = new Ball().gravity;
-        this.verticalAngle = Math.PI / 4; // Başlangıç 45 derece
+        this.verticalAngle = Math.PI / 4;
         this.minAngle = Math.PI / 8;
         this.maxAngle = Math.PI / 2.5;
         this.angleChangeSpeed = 0.02;
         this.powerIncrement = 0.1;
+        this.isAimAssisted = false;
 
-        this.isAimAssisted = false; // Yeni: Nişan yardımı aktif mi?
+        this.player = playerRef; // <-- Oyuncu referansını sakla
 
         this.setupMouseListeners();
         this.updatePowerBar();
@@ -144,17 +145,32 @@ export class ShootingSystem {
     }
 
     releaseCharge(ball) {
-        if (!ball.isHeld) return; // Top tutulmuyorsa atma
-        if (!this.isAimAssisted && this.throwPower <= 0) return; // Manuel atışta güç 0 ise atma
+        if (!ball.isHeld) return;
+        if (!this.isAimAssisted && this.throwPower <= 0) return;
 
         console.log("Atış yapılıyor... Güç:", this.throwPower.toFixed(1), "Açı:", THREE.MathUtils.radToDeg(this.verticalAngle).toFixed(1));
+        
+        // Atış animasyonu player.js'de mousedown içinde tetikleniyor.
+        // Burada sadece topu fırlatma mantığı kalıyor.
+        // Eğer atış animasyonu burada tetiklenecekse, this.player üzerinden çağrılabilirdi:
+        // if (this.player && this.player.actions['shoot']) {
+        //     this.player.playAnimationOnce('shoot', () => {
+        //         const velocity = this.calculateThrowVelocity(ball);
+        //         ball.throw(velocity);
+        //     });
+        // } else {
+        //     const velocity = this.calculateThrowVelocity(ball);
+        //     ball.throw(velocity);
+        // }
+        // Şimdilik player.js bu mantığı yönetiyor.
+
         const velocity = this.calculateThrowVelocity(ball);
         ball.throw(velocity);
 
         this.throwPower = 0;
         this.updatePowerBar();
         this.hideTrajectory();
-        this.isAimAssisted = false; // Atıştan sonra otomatik nişanı kapat
+        this.isAimAssisted = false;
     }
 
     // --- GÜNCELLENDİ: performAutoShot ---
