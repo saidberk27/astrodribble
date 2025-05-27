@@ -14,10 +14,14 @@ export function createLights() {
     scene.add(ambientLight);
 }
 
-export function createCourt() {
+export function createCourt(texturePath = 'textures/court_texture.jpg') { // texturePath parametresi eklendi
     const courtGeometry = new THREE.PlaneGeometry(15.24, 28.65);
     const textureLoader = new THREE.TextureLoader();
-    const courtTexture = textureLoader.load('textures/court_texture.jpg');
+
+    // Doku yolunu parametreden al
+    console.log("Saha dokusu yükleniyor:", texturePath); // Hangi dokunun yüklendiğini görmek için
+    const courtTexture = textureLoader.load(texturePath); // Parametreyi kullan
+
     const courtMaterial = new THREE.MeshStandardMaterial({
         map: courtTexture,
         side: THREE.DoubleSide
@@ -25,8 +29,9 @@ export function createCourt() {
     const court = new THREE.Mesh(courtGeometry, courtMaterial);
     court.rotation.x = -Math.PI / 2;
     court.receiveShadow = true;
-    scene.add(court);
+    scene.add(court); // scene'i global olarak (scene.js'den import ederek) kullandığınızı varsayıyorum
 }
+
 
 // createHoops fonksiyonunu güncelliyoruz
 export function createHoops(hoopsArray, gltf_loader) { // hoopsArray ve gltf_loader parametre olarak alınıyor
