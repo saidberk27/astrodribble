@@ -1,203 +1,315 @@
 // core/player.js
 
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
-import { createPlayerPhysics } from './physics.js';
 
-// Global Değişkenler - Dosya kapsamında
-const inputState = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    jump: false,
-};
+import { ShootingSystem } from './shoot.js';
+import { fbx_loader, levelSettings, currentLevel } from '../game.js';
+import { scene } from './scene.js';
 
-const playerSpeed = 10.0;
-const playerRotationAmount = Math.PI / 60; // Her karede ne kadar döneceği (radyan)
-const pickUpDistance = 1.5;
+export class Player {
+    constructor() {
+        this.mesh = new THREE.Object3D();
+        this.mesh.position.set(0, 0, 0);
+        this.direction = new THREE.Vector3(0, 0, -1);
+        this.speed = 0.15;
+        this.rotationSpeed = 0.05;
 
-// --- Oyuncu Oluşturma Fonksiyonu ---
-export function createPlayer() {
-    const playerBody = createPlayerPhysics(); // physics.js'den doğru ayarlanmış body'yi alır
-    const playerMesh = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.3, 0.6, 4, 8),
-        new THREE.MeshStandardMaterial({ color: 0x88dd88 })
-    );
-    playerMesh.castShadow = true;
-    playerMesh.receiveShadow = true;
+        this.velocityY = 0;
+        this.isJumping = false;
+        this.onGround = true;
+        this.jumpForce = 0.25;
+        this.playerGravity = levelSettings[currentLevel] ? levelSettings[currentLevel].gravity * 0.8 : 0.015 * 0.8;
+        this.modelObject = null;
 
-    const playerObject = {
-        mesh: playerMesh,
-        body: playerBody,
-        onGround: true,
+        this.mixer = null;
+        this.actions = {};
+        this.activeActionName = null;
+        this.isAnimatingAction = false; // Tek seferlik animasyon oynuyor mu?
 
-        getPosition: function () {
-            return new THREE.Vector3(
-                this.body.position.x,
-                this.body.position.y,
-                this.body.position.z
-            );
-        },
-        getRotationY: function () {
-            // physics.js'deki invInertia ve aşağıdaki update metodu sayesinde
-            // body.quaternion'un X ve Z rotasyonları minimal olmalı.
-            const q = this.body.quaternion;
-            // Quaternion'dan Y ekseni etrafındaki dönüşü (yaw) almanın doğru yolu:
-            // Bu formül, Y ekseninin "yukarı" olduğu bir sistem için yaw açısını verir.
-            const yawAngle = Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
-            return yawAngle;
-        },
-        update: function () {
-            // 1. Oyuncunun X ve Z eksenlerindeki açısal hızını her karede sıfırla.
-            // Bu, physics.js'deki invInertia ayarlarıyla birlikte devrilmeyi büyük ölçüde engellemelidir.
-            this.body.angularVelocity.x = 0;
-            this.body.angularVelocity.z = 0;
+        this.loadCharacterAndAnimations();
+    }
 
-            // 2. Quaternion stabilizasyonunu basitleştir:
-            // physics.js'deki invInertia.x = 0 ve invInertia.z = 0 ayarları,
-            // fizik motorunun X ve Z eksenlerinde tork uygulamasını zaten engeller.
-            // Bu nedenle, burada quaternion'u aşırı manipüle etmek yerine,
-            // sadece normalize etmek genellikle yeterlidir.
-            // Eğer hala küçük X/Z eğimleri oluşuyorsa, bu, çarpışmalar veya
-            // diğer dış kuvvetlerden kaynaklanıyor olabilir ve bu durumda daha hassas bir
-            // düzeltme gerekebilir, ancak şimdilik bu basitleştirmeyi deneyelim.
-            this.body.quaternion.normalize();
+    loadCharacterAndAnimations() {
+        const modelPath = 'models/Idle.fbx'; // Ana modelimiz (Idle animasyonunu da içeriyor)
+        const animPaths = {
+            run: 'models/running.fbx',          // Koşma (Run With Sword.fbx'ten)
+            jump_up: 'models/jumping_up.fbx',    // Zıplama başlangıcı
+            jump_down: 'models/jumping_down.fbx',// İniş
+            shoot: 'models/shooting.fbx'       // Atış (Throw In.fbx'ten)
+        };
 
+        fbx_loader.load(modelPath, (loadedFbx) => {
+            this.modelObject = loadedFbx;
+            this.modelObject.scale.set(0.01, 0.01, 0.01);
+            this.modelObject.rotation.y = Math.PI; // Yön düzeltmesi
 
-            // 3. Görsel modeli fiziksel gövdeyle senkronize et
-            this.mesh.position.copy(this.body.position);
-            this.mesh.quaternion.copy(this.body.quaternion); // Fizik motorunun güncellediği ve normalize edilmiş quaternion'u kopyala
+            this.modelObject.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            this.mesh.add(this.modelObject);
+            scene.add(this.mesh);
+            console.log("Oyuncu ana modeli (Idle) yüklendi:", modelPath);
+
+            this.mixer = new THREE.AnimationMixer(this.modelObject);
+
+            if (loadedFbx.animations && loadedFbx.animations.length > 0) {
+                const idleClip = loadedFbx.animations[0];
+                this.actions['idle'] = this.mixer.clipAction(idleClip);
+                this.actions['idle'].play();
+                this.activeActionName = 'idle';
+                console.log("Varsayılan 'idle' animasyonu oynatılıyor:", idleClip.name);
+            } else {
+                console.warn(modelPath + " içinde varsayılan animasyon bulunamadı.");
+            }
+
+            // Diğer animasyonları yükle
+            Object.keys(animPaths).forEach(animName => {
+                const path = animPaths[animName];
+                fbx_loader.load(path, (animFbx) => {
+                    if (animFbx.animations && animFbx.animations.length > 0) {
+                        const clip = animFbx.animations[0]; // Her FBX'in ilk animasyonunu al
+                        this.actions[animName] = this.mixer.clipAction(clip);
+                        console.log("'" + animName + "' animasyonu yüklendi:", clip.name);
+
+                        // Tek seferlik oynayacak animasyonların ayarları
+                        if (['jump_up', 'jump_down', 'shoot'].includes(animName)) {
+                            this.actions[animName].setLoop(THREE.LoopOnce);
+                            this.actions[animName].clampWhenFinished = true;
+                        }
+                    } else {
+                        console.warn(path + " içinde animasyon klibi bulunamadı.");
+                    }
+                }, undefined, (error) => console.error(path + " yüklenirken hata:", error));
+            });
+
+        }, undefined, (error) => {
+            console.error(modelPath + ' yüklenirken hata:', error);
+        });
+    }
+
+    playAnimation(name, crossFadeDuration = 0.2) {
+        if (this.activeActionName === name || !this.actions[name] || !this.mixer || this.isAnimatingAction) return;
+
+        const previousAction = this.actions[this.activeActionName];
+        const newAction = this.actions[name];
+
+        if (previousAction && previousAction !== newAction) {
+            previousAction.fadeOut(crossFadeDuration);
+
         }
     };
     return playerObject;
 }
 
-// --- Oyuncu Kontrollerini Ayarlama Fonksiyonu ---
-export function setupPlayerControls(player, ball, shootingSystem) {
-    let pickUpOrDropActionInitiated = false;
 
-    const onKeyDown = (event) => {
-        switch (event.code) {
-            case 'KeyW': case 'ArrowUp': inputState.forward = true; break;
-            case 'KeyS': case 'ArrowDown': inputState.backward = true; break;
-            case 'KeyA': case 'ArrowLeft': inputState.left = true; break;
-            case 'KeyD': case 'ArrowRight': inputState.right = true; break;
-            case 'Enter':
-                if (!pickUpOrDropActionInitiated) {
-                    pickUpOrDropActionInitiated = true;
-                    if (ball && ball.isHeld && ball.holder === player) {
-                        if (typeof ball.drop === 'function') {
-                            ball.drop();
-                            console.log("Top bırakıldı (Enter ile)");
-                        } else {
-                            ball.throw(new THREE.Vector3(0, 0.1, 0).multiplyScalar(0.1));
-                            console.log("Top bırakıldı (Enter ile - hafif fırlatma)");
-                        }
-                    } else if (ball && !ball.isHeld && player.mesh && ball.mesh) {
-                        const distanceToBall = player.mesh.position.distanceTo(ball.mesh.position);
-                        if (distanceToBall < pickUpDistance) {
-                            ball.pickUp(player);
-                            console.log("Top alındı (Enter ile)!");
-                        }
-                    }
-                }
-                break;
-            case 'Space':
-                if (player.onGround) {
-                    inputState.jump = true;
-                }
-                break;
+        newAction
+            .reset()
+            .setEffectiveTimeScale(1)
+            .setEffectiveWeight(1)
+            .fadeIn(crossFadeDuration)
+            .play();
+
+        this.activeActionName = name;
+    }
+
+    playAnimationOnce(name, onFinishedCallback, crossFadeDuration = 0.1) {
+        if (!this.actions[name] || !this.mixer || this.isAnimatingAction) {
+            if (onFinishedCallback) onFinishedCallback(); // Eğer zaten animasyondaysak veya animasyon yoksa callback'i hemen çağır.
+            return;
+        }
+
+        this.isAnimatingAction = true; // Tek seferlik animasyon oynuyor bayrağı
+        const actionToPlay = this.actions[name];
+        const previousActionName = this.activeActionName;
+
+        // Önceki animasyonu yavaşça sonlandır
+        if (this.actions[previousActionName] && this.actions[previousActionName] !== actionToPlay) {
+            this.actions[previousActionName].fadeOut(crossFadeDuration);
+
         }
     };
 
-    const onKeyUp = (event) => {
-        switch (event.code) {
-            case 'KeyW': case 'ArrowUp': inputState.forward = false; break;
-            case 'KeyS': case 'ArrowDown': inputState.backward = false; break;
-            case 'KeyA': case 'ArrowLeft': inputState.left = false; break;
-            case 'KeyD': case 'ArrowRight': inputState.right = false; break;
-            case 'Enter':
-                pickUpOrDropActionInitiated = false;
-                break;
-        }
-    };
 
-    const onMouseDown = (event) => {
-        if (event.button === 0) {
-            if (ball && ball.isHeld && ball.holder === player && shootingSystem && !shootingSystem.isCharging) {
-                shootingSystem.startCharging(ball);
+        // Yeni animasyonu başlat
+        actionToPlay
+            .reset()
+            .setLoop(THREE.LoopOnce, 1) // Tekrar döngü ayarını teyit et
+            .setEffectiveTimeScale(1)
+            .setEffectiveWeight(1)
+            .fadeIn(crossFadeDuration)
+            .play();
+        this.activeActionName = name; // Aktif animasyonu güncelle
+
+
+        const listener = (event) => {
+            if (event.action === actionToPlay) {
+                this.mixer.removeEventListener('finished', listener);
+                this.isAnimatingAction = false; // Animasyon bitti bayrağı
+
+                // Biten animasyon 'shoot' veya 'jump_down' değilse idle'a dön
+                // 'shoot' ve 'jump_down' bittikten sonraki durumları kendi özel mantıklarında ele almalılar
+                if (name !== 'shoot' && name !== 'jump_down') {
+                     this.playAnimation(isMovingHorizontal ? 'run' : 'idle'); // Yere inince veya zıplama bitince duruma göre
+                }
+
+                if (onFinishedCallback) {
+                    onFinishedCallback();
+                }
+            }
+        };
+        this.mixer.addEventListener('finished', listener);
+    }
+
+
+    jump() {
+        if (this.onGround && !this.isAnimatingAction) {
+            this.velocityY = this.jumpForce;
+            this.isJumping = true;
+            this.onGround = false;
+            this.playAnimationOnce('jump_up', () => {
+                // jump_up bittikten sonra, eğer hala havadaysak bir "falling" animasyonuna geçebiliriz.
+                // Şimdilik, yere inme kontrolü move() içinde jump_down'ı tetikleyecek.
+                // Veya jump_up bitince direkt idle/run'a dönebilir eğer falling animasyonumuz yoksa.
+                // Şu anki playAnimationOnce mantığı, jump_up bitince koşuyor/duruyor durumuna göre animasyona dönecek.
+            });
+        }
+    }
+
+    move(keysPressed) {
+        this.playerGravity = levelSettings[currentLevel] ? levelSettings[currentLevel].gravity * 0.8 : 0.015 * 0.8;
+        const moveVector = new THREE.Vector3(0, 0, 0);
+        let isMovingHorizontal = false;
+
+        if (keysPressed['w'] || keysPressed['arrowup']) { moveVector.z = -this.speed; isMovingHorizontal = true; }
+        if (keysPressed['s'] || keysPressed['arrowdown']) { moveVector.z = this.speed; isMovingHorizontal = true; }
+        if (keysPressed['a'] || keysPressed['arrowleft']) { this.mesh.rotation.y += this.rotationSpeed; }
+        if (keysPressed['d'] || keysPressed['arrowright']) { this.mesh.rotation.y -= this.rotationSpeed; }
+
+        moveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
+        this.mesh.position.add(moveVector);
+
+        this.velocityY -= this.playerGravity;
+        this.mesh.position.y += this.velocityY;
+
+        if (this.mesh.position.y < 0) { // Zemin kontrolü
+            this.mesh.position.y = 0;
+            this.velocityY = 0;
+            if (this.isJumping) { // Eğer zıplama durumundan geliyorsa
+                this.playAnimationOnce('jump_down', () => {
+                    // İniş animasyonu bittikten sonra idle veya run'a geç
+                    this.playAnimation(isMovingHorizontal ? 'run' : 'idle');
+                });
+            }
+            this.isJumping = false;
+            this.onGround = true;
+        }
+
+        // Animasyon Durumunu Ayarla (Tek seferlik bir animasyon oynamıyorsa)
+        if (!this.isAnimatingAction && this.onGround) {
+            if (isMovingHorizontal) {
+                this.playAnimation('run');
+            } else {
+                this.playAnimation('idle');
             }
         }
-    };
 
-    const onMouseUp = (event) => {
-        if (event.button === 0) {
-            if (shootingSystem && shootingSystem.isCharging) {
-                shootingSystem.releaseCharge(ball);
-            }
+        // Saha Sınırları
+        const courtWidth = 15.24; const courtLength = 28.65; const playerMargin = 0.3;
+        const minX = -courtWidth / 2 + playerMargin; const maxX = courtWidth / 2 - playerMargin;
+        const minZ = -courtLength / 2 + playerMargin; const maxZ = courtLength / 2 - playerMargin;
+        this.mesh.position.x = Math.max(minX, Math.min(maxX, this.mesh.position.x));
+        this.mesh.position.z = Math.max(minZ, Math.min(maxZ, this.mesh.position.z));
+
+        this.direction.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
+
+        if (this.mixer) {
+            const deltaTime = 0.0166; // THREE.Clock kullanmak daha iyi
+            this.mixer.update(deltaTime);
         }
-    };
+    }
+
+    getPosition() { return this.mesh.position; }
+    getDirection() { return this.direction; }
+    getRotation() { return this.mesh.rotation.y; }
+}
+
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseup', onMouseUp);
 
-    return function updatePlayerMovement() {
-        if (!player || !player.body) return;
 
-        const currentVelocityY = player.body.velocity.y;
+export function setupPlayerControls(player, ball, hoops) {
+    const keysPressed = {};
+    // ShootingSystem constructor'ına player referansını artık göndermiyoruz,
+    // çünkü atış animasyonu doğrudan player.js içinde mousedown ile tetikleniyor.
+    const shootingSystem = new ShootingSystem();
 
-        // Rotasyon
-        const yAxis = new CANNON.Vec3(0, 1, 0);
-        const rotationStepQuaternion = new CANNON.Quaternion();
-
-        if (inputState.left) {
-            rotationStepQuaternion.setFromAxisAngle(yAxis, playerRotationAmount);
-            player.body.quaternion.mult(rotationStepQuaternion, player.body.quaternion);
+    window.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        keysPressed[key] = true;
+        if (key === ' ' && ball.isHeld && !shootingSystem.isAimAssisted && !player.isAnimatingAction) { // Animasyon yokken güç artır
+            shootingSystem.increasePower();
+            event.preventDefault();
         }
-        if (inputState.right) {
-            rotationStepQuaternion.setFromAxisAngle(yAxis, -playerRotationAmount);
-            player.body.quaternion.mult(rotationStepQuaternion, player.body.quaternion);
-        }
-        if (inputState.left || inputState.right) {
-            player.body.quaternion.normalize(); // Rotasyon sonrası normalize et
-        }
-        // Y eksenindeki açısal hızı sıfırlıyoruz çünkü rotasyonu doğrudan quaternion ile yapıyoruz.
-        player.body.angularVelocity.y = 0;
-
-        // Hareket
-        let moveSpeed = 0;
-        if (inputState.forward) moveSpeed = playerSpeed;
-        if (inputState.backward) moveSpeed = -playerSpeed;
-        const moveDirectionWorld = new CANNON.Vec3(0, 0, 0);
-        if (moveSpeed !== 0) {
-            const forwardVectorLocal = new CANNON.Vec3(0, 0, -1);
-            // player.update() içinde quaternion zaten normalize edildiği için,
-            // buradaki vmult işlemi daha tutarlı bir "ileri" yön vermeli.
-            player.body.quaternion.vmult(forwardVectorLocal, moveDirectionWorld);
-        }
-        player.body.velocity.x = moveDirectionWorld.x * moveSpeed;
-        player.body.velocity.z = moveDirectionWorld.z * moveSpeed;
-
-        // Zıplama ve Yer Kontrolü
-        if (inputState.jump && player.onGround) {
-            player.body.velocity.y = 7;
-            player.onGround = false;
-            inputState.jump = false;
-        } else {
-            player.body.velocity.y = currentVelocityY;
-        }
-        const playerHalfHeight = player.body.shapes[0].halfExtents ? player.body.shapes[0].halfExtents.y : 0.6;
-        if (player.body.position.y <= (playerHalfHeight + 0.1) && player.body.velocity.y < 0.01) {
-            if (!player.onGround) {
-                player.onGround = true;
+        if (key === 'f' && !ball.isHeld) {
+            const distance = player.mesh.position.distanceTo(ball.mesh.position);
+            if (distance < 2) {
+                ball.pickUp(player.mesh);
+                if (ball.isHeld) { shootingSystem.showTrajectory(ball); }
             }
         }
+        if (key === 'shift' && event.location === KeyboardEvent.DOM_KEY_LOCATION_LEFT) { // Sol Shift
+            player.jump();
+            event.preventDefault();
+        }
+    });
 
-        if (shootingSystem && shootingSystem.isCharging) {
-            shootingSystem.updateCharging(ball);
+    window.addEventListener('keyup', (event) => {
+        const key = event.key.toLowerCase();
+        keysPressed[key] = false;
+        if (key === 'x' && ball.isHeld) {
+            shootingSystem.performAutoShot(ball, hoops);
+        }
+    });
+
+    window.addEventListener('mousedown', (event) => {
+    if (event.button === 0 && ball.isHeld && !player.isAnimatingAction) { // Sol Tıklama
+        player.playAnimationOnce('shoot'); // Sadece animasyonu başlat, callback yok
+
+        // Atış animasyonunun yaklaşık ne kadar sürede topu "bıraktığını" tahmin etmemiz lazım.
+        // Örneğin, animasyon 0.5 saniyede topu bırakıyorsa:
+        const releaseTime = 500; // milisaniye (0.5 saniye) - BU DEĞERİ ANİMASYONUNUZA GÖRE AYARLAYIN!
+
+        setTimeout(() => {
+            // Eğer hala top tutuluyorsa ve otomatik nişan aktif değilse fırlat
+            // (Oyuncu bu süre içinde topu bırakmış veya X'e basmış olabilir)
+            if (ball.isHeld && !shootingSystem.isAimAssisted) {
+                 shootingSystem.releaseCharge(ball);
+            }
+        }, releaseTime);
+    }
+});
+
+    window.addEventListener('beforeunload', () => {
+        shootingSystem.dispose();
+    });
+
+    return function updatePlayerMovement() {
+        player.move(keysPressed);
+        if (ball.isHeld) {
+            if (!shootingSystem.isAimAssisted && !player.isAnimatingAction) { // Animasyon yokken açı ayarla
+                if (keysPressed['q']) { shootingSystem.adjustAngle(-shootingSystem.angleChangeSpeed); }
+                if (keysPressed['e']) { shootingSystem.adjustAngle(shootingSystem.angleChangeSpeed); }
+            }
+            shootingSystem.update(ball);
+        } else {
+            shootingSystem.hideTrajectory();
+
         }
     };
 }

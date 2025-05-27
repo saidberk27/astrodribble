@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { gltf_loader } from '../game.js';
+// GLTFLoader'ı buradan kaldırıyoruz, game.js'den gelecek.
 import { scene } from './scene.js';
 import { world, createHoopPhysics, createGroundPhysics, initPhysics } from './physics.js';
 
@@ -18,90 +18,97 @@ export function createLights() {
     scene.add(ambientLight);
 }
 
-export function createCourt() {
-    // Saha boyutları
-    const courtWidth = 15.24;
-    const courtLength = 28.65;
 
-    const courtGeometry = new THREE.PlaneGeometry(courtWidth, courtLength);
+export function createCourt(texturePath = 'textures/court_texture.jpg') { // texturePath parametresi eklendi
+    const courtGeometry = new THREE.PlaneGeometry(15.24, 28.65);
+
     const textureLoader = new THREE.TextureLoader();
-    const courtTexture = textureLoader.load('textures/court_texture.jpg');
+
+    // Doku yolunu parametreden al
+    console.log("Saha dokusu yükleniyor:", texturePath); // Hangi dokunun yüklendiğini görmek için
+    const courtTexture = textureLoader.load(texturePath); // Parametreyi kullan
 
     const courtMaterial = new THREE.MeshStandardMaterial({
         map: courtTexture,
         side: THREE.DoubleSide
     });
 
+
     const court = new THREE.Mesh(courtGeometry, courtMaterial);
     court.rotation.x = -Math.PI / 2;
     court.receiveShadow = true;
-    scene.add(court);
+    scene.add(court); // scene'i global olarak (scene.js'den import ederek) kullandığınızı varsayıyorum
+}
 
     // Saha için fizik gövdesi oluştur
     createGroundPhysics(courtWidth, courtLength);
 
 
-}
+// createHoops fonksiyonunu güncelliyoruz
+export function createHoops(hoopsArray, gltf_loader) { // hoopsArray ve gltf_loader parametre olarak alınıyor
 
-// Pota kolizyon nesnelerini tutacak dizi
-export const hoopColliders = [];
+    const hoopRingHeight = 3.05; // Standart pota yüksekliği
+    const hoopRingRadius = 0.45; // Pota çemberi yarıçapı (yaklaşık)
+    const hoopTubeRadius = 0.03; // Pota çemberi kalınlığı (yaklaşık)
 
-// Potaların fizik gövdelerini tutacak dizi
-export const hoopBodies = [];
 
-export function createHoops() {
-    gltf_loader.load(
+    // --- DENEME YANILMA İÇİN OFSETLER ---
+    // Bu değerlerle oynayarak çemberleri tam potanın üzerine getirmeye çalışın.
+    const hoop1_Z_offset = -0.6; // Örneğin, -0.1 veya +0.1 gibi değerler deneyin
+    const hoop2_Z_offset = 0.6; // Örneğin, -0.1 veya +0.1 gibi değerler deneyin
+    // ------------------------------------
+
+ gltf_loader.load(
         'models/basketball_hoop2.glb',
         function (gltf) {
-            // Pota parametreleri
-            const hoopRadius = 0.45;
-            const hoopHeight = 3.05;
-            const poleRadius = 0.15;
-            const boardWidth = 1.8;
-            const boardHeight = 1.5;
-            const boardDepth = 0.3;
-            const poleHeight = 3.05;
-
-            // İlk pota
+            // --- Birinci Pota ---
             const hoop1 = gltf.scene;
             hoop1.scale.set(0.01, 0.01, 0.01);
-            hoop1.position.set(0, hoopHeight / 2, 12.5);
-            hoop1.rotation.y = Math.PI;
-            scene.add(hoop1);            // İlk pota için fizik gövdeleri oluştur
-            const hoop1Physics = createHoopPhysics(new THREE.Vector3(0, hoopHeight, 12.5));
-            hoopColliders.push(hoop1Physics);
+            hoop1.position.set(0, 2, 12.5);
+            hoop1.rotation.y = Math.PI; // Bu doğru görünüyordu
+            hoop1.castShadow = false;
+            hoop1.receiveShadow = false;
+            scene.add(hoop1);
 
-            // Görünür basket bölgesi çemberi (1. pota)
-            const ringGeometry = new THREE.TorusGeometry(hoopRadius, 0.02, 8, 24);
-            const ringMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
-                transparent: true,
-                opacity: 0.5
-            });
-            const ring1 = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring1.position.set(0, hoopHeight, 12.5);
-            ring1.rotation.x = Math.PI / 2;
-            scene.add(ring1);
+            const torusGeo1 = new THREE.TorusGeometry(hoopRingRadius, hoopTubeRadius, 16, 50);
+            const torusMat1 = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+            const hoop1CollisionMesh = new THREE.Mesh(torusGeo1, torusMat1);
+            // Çarpışma çemberinin pozisyonunu pota pozisyonu + ofset olarak ayarla
+            hoop1CollisionMesh.position.set(hoop1.position.x, hoopRingHeight, hoop1.position.z + hoop1_Z_offset);
+            hoop1CollisionMesh.rotation.x = Math.PI / 2;
+            scene.add(hoop1CollisionMesh);
+            hoop1.userData.collisionMesh = hoop1CollisionMesh;
+            hoopsArray.push(hoop1);
 
-            // İkinci pota
+            // --- İkinci Pota ---
             const hoop2 = gltf.scene.clone();
-            hoop2.position.set(0, hoopHeight / 2, -12.5);
-            hoop2.rotation.y = Math.PI;
-            scene.add(hoop2);            // İkinci pota için fizik gövdeleri oluştur
-            const hoop2Physics = createHoopPhysics(new THREE.Vector3(0, hoopHeight, -12.5));
-            hoopColliders.push(hoop2Physics);
+            hoop2.scale.set(0.01, 0.01, 0.01); // Ölçeği burada da ayarlamayı unutmayın
+            hoop2.position.set(0, 2, -12.5);
+            // --- DÜZELTME: İkinci potanın da yönünü ilk pota gibi yapalım ---
+            hoop2.rotation.y = Math.PI; // Eğer bu da tersse 0 deneyin.
+            // --------------------------------------------------------------
+            hoop2.castShadow = false;
+            hoop2.receiveShadow = false;
+            scene.add(hoop2);
 
-            const ring2 = ring1.clone();
-            ring2.position.set(0, hoopHeight, -12.5);
-            scene.add(ring2);
+            const torusGeo2 = new THREE.TorusGeometry(hoopRingRadius, hoopTubeRadius, 16, 50);
+            const torusMat2 = new THREE.MeshBasicMaterial({ color: 0x0000ff, wireframe: true });
+            const hoop2CollisionMesh = new THREE.Mesh(torusGeo2, torusMat2);
+            // Çarpışma çemberinin pozisyonunu pota pozisyonu + ofset olarak ayarla
+            hoop2CollisionMesh.position.set(hoop2.position.x, hoopRingHeight, hoop2.position.z + hoop2_Z_offset);
+            hoop2CollisionMesh.rotation.x = Math.PI / 2;
+            scene.add(hoop2CollisionMesh);
+            hoop2.userData.collisionMesh = hoop2CollisionMesh;
+            hoopsArray.push(hoop2);
+
+            console.log("Potalar ve çarpışma çemberleri (düzeltilmiş) oluşturuldu.");
+
         },
-        // Yükleme sırasında ilerlemeyi göster
         function (xhr) {
-            console.log((xhr.loaded / xhr.total * 100) + '% yüklendi');
+            console.log((xhr.loaded / xhr.total * 100) + '% pota modeli yüklendi');
         },
-        // Hata durumunda
         function (error) {
-            console.error('Model yüklenirken hata oluştu:', error);
+            console.error('Pota modeli yüklenirken hata oluştu:', error);
         }
     );
 }

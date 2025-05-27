@@ -5,74 +5,123 @@ import * as CANNON from 'cannon-es';
 import { world, createBallPhysics } from './physics.js';
 
 export class Ball {
-    constructor() {
-        this.geometry = new THREE.SphereGeometry(0.3, 32, 32);
-        this.material = new THREE.MeshStandardMaterial({
+
+    constructor(gravityValue = 0.015) { // Varsayılan değer Dünya yerçekimi, game.js'den ayarlanacak
+        // Top geometrisi ve materyali
+        const geometry = new THREE.SphereGeometry(0.3, 32, 32);
+        const material = new THREE.MeshPhongMaterial({
+
             color: 0xf85e00,
             roughness: 0.7,
             metalness: 0.1
         });
-        this.mesh = new THREE.Mesh(this.geometry, this.material);
-        this.radius = 0.3;
-        this.body = createBallPhysics(this.radius);
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.position.set(2, 0.3, 0); // Başlangıç pozisyonu
+
+        // Atış mekaniği değişkenleri
         this.isHeld = false;
         this.holder = null;
-        this.hasScored = false;
-        this.localOffset = new THREE.Vector3(0.0, 0.5, -0.6);
+        this.velocity = new THREE.Vector3();
+        this.gravity = gravityValue; // Seviyeye göre ayarlanacak yerçekimi
+        this.isMoving = false;
+
+        // Topun fiziksel özellikleri
+        this.radius = 0.3;
+        this.previousPosition = new THREE.Vector3(); // Önceki konumu saklamak için
+        this.ballSphere = new THREE.Sphere(this.mesh.position, this.radius); // Çarpışma tespiti için
+
+        // Skorlama ile ilgili değişkenler
+        this.hasScored = false; // Bu atışta skor oldu mu?
+        this.scoreTimeout = null; // Skor sonrası bekleme için
+
+        // Oyuncuya göre yerel ofset (topun tutulduğu nokta)
+        this.localOffset = new THREE.Vector3(0.0, 0.5, -0.7); // Bu değerleri modelinize göre ayarlayın
+        this.tempQuaternion = new THREE.Quaternion();
     }
 
     update() {
-        if (this.isHeld && this.holder && this.holder.body) {
-            const playerBodyQuaternion = this.holder.body.quaternion;
-            const threePlayerQuaternion = new THREE.Quaternion(
-                playerBodyQuaternion.x,
-                playerBodyQuaternion.y,
-                playerBodyQuaternion.z,
-                playerBodyQuaternion.w
-            );
-            const rotatedOffset = this.localOffset.clone().applyQuaternion(threePlayerQuaternion);
-            const holderPosition = new THREE.Vector3(
-                this.holder.body.position.x,
-                this.holder.body.position.y,
-                this.holder.body.position.z
-            );
-            this.mesh.position.copy(holderPosition).add(rotatedOffset);
-            this.body.position.copy(this.mesh.position);
-            this.body.velocity.setZero();
-            this.body.angularVelocity.setZero();
-        } else {
-            if (this.body && this.mesh) {
-                this.mesh.position.copy(this.body.position);
-                this.mesh.quaternion.copy(this.body.quaternion);
+        // Konum güncellenmeden ÖNCE mevcut konumu sakla
+        this.previousPosition.copy(this.mesh.position);
+
+        if (this.isHeld && this.holder) {
+            // Oyuncunun mevcut dönüş açısını al
+            const playerRotation = this.holder.rotation.y;
+            // Dönüşü Quaternion'a çevir
+            this.tempQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), playerRotation);
+            // Ofseti oyuncunun dönüşüne göre döndür
+            const rotatedOffset = this.localOffset.clone().applyQuaternion(this.tempQuaternion);
+            // Topun nihai pozisyonunu ayarla
+            this.mesh.position.copy(this.holder.position).add(rotatedOffset);
+
+        } else if (this.isMoving) {
+            // Top havadaysa (fizik simülasyonu)
+            this.velocity.y -= this.gravity; // Yerçekimi uygula
+            this.mesh.position.add(this.velocity); // Hıza göre pozisyonu güncelle
+
+            // --- SINIR KONTROLLERİ (Saha Dışı ve Zemin/Tavan) ---
+            const courtWidth = 15.24; // Orijinal saha genişliği
+            const courtLength = 28.65; // Orijinal saha uzunluğu
+            const maxHeight = 15.0;   // Tavan yüksekliği
+            const elasticity = 0.7;   // Duvarların ve tavanın sekme katsayısı
+
+            const minX = -courtWidth / 2 + this.radius;
+            const maxX = courtWidth / 2 - this.radius;
+            const minZ = -courtLength / 2 + this.radius;
+            const maxZ = courtLength / 2 - this.radius;
+            const minY = this.radius; // Zemin seviyesi
+
+            // X Ekseni Sınırları
+            if (this.mesh.position.x < minX) {
+                this.mesh.position.x = minX;
+                this.velocity.x *= -elasticity;
+            } else if (this.mesh.position.x > maxX) {
+                this.mesh.position.x = maxX;
+                this.velocity.x *= -elasticity;
             }
+
+            // Z Ekseni Sınırları
+            if (this.mesh.position.z < minZ) {
+                this.mesh.position.z = minZ;
+                this.velocity.z *= -elasticity;
+            } else if (this.mesh.position.z > maxZ) {
+                this.mesh.position.z = maxZ;
+                this.velocity.z *= -elasticity;
+            }
+
+            // Y Ekseni Sınırları (Zemin)
+            if (this.mesh.position.y <= minY) {
+                this.mesh.position.y = minY;
+                this.velocity.y *= -0.6; // Zemin sekmesi biraz daha fazla
+                this.velocity.x *= 0.8;  // Zeminde sürtünme
+                this.velocity.z *= 0.8;
+
+                if (this.velocity.length() < 0.05) { // Neredeyse durduysa
+                   this.isMoving = false;
+                   this.velocity.set(0, 0, 0);
+                }
+            }
+            // Y Ekseni Sınırları (Tavan)
+            else if (this.mesh.position.y > maxHeight - this.radius) {
+                this.mesh.position.y = maxHeight - this.radius;
+                this.velocity.y *= -elasticity;
+            }
+            // --- SINIR KONTROLLERİ SONU ---
         }
 
-        if (!this.isHeld && this.body && Math.abs(this.body.velocity.y) < 0.1 && this.body.position.y <= this.radius + 0.05) {
-            const horizontalVelocity = new CANNON.Vec3(this.body.velocity.x, 0, this.body.velocity.z);
-            if (horizontalVelocity.lengthSquared() < 0.01 && this.body.sleepState !== CANNON.Body.SLEEPING) {
-                this.body.sleep();
-            } else if (horizontalVelocity.lengthSquared() >= 0.01) {
-                this.body.velocity.x *= 0.98;
-                this.body.velocity.y = 0;
-                this.body.velocity.z *= 0.98;
-            }
-            this.body.position.y = this.radius;
-        }
+        // Her durumda topun küre temsilini güncelle
+        this.ballSphere.center.copy(this.mesh.position);
     }
 
-    throw(velocityVector) { // Parametre adı velocityVector olarak değiştirildi
+    throw(direction) {
         if (this.isHeld) {
             this.isHeld = false;
-            this.body.wakeUp(); // Uyku modundan çıkar
-            // Gelen velocityVector'ı doğrudan ata
-            this.body.velocity.set(velocityVector.x, velocityVector.y, velocityVector.z);
-            this.body.angularVelocity.set(
-                (Math.random() - 0.5) * 10,
-                (Math.random() - 0.5) * 10,
-                (Math.random() - 0.5) * 10
-            );
-            this.holder = null; // Holder'ı temizle
-            console.log("Top fırlatıldı, hız:", velocityVector);
+            this.holder = null;
+            this.isMoving = true;
+            this.velocity.copy(direction);
+            // Atıştan hemen sonra skor kontrolünü aktifleştir
+            this.hasScored = false;
+            if(this.scoreTimeout) clearTimeout(this.scoreTimeout);
+
         }
     }
 
@@ -80,58 +129,52 @@ export class Ball {
         if (!this.isHeld && this.body.velocity.lengthSquared() < 1.5) { // Hız eşiği biraz daha artırıldı
             this.isHeld = true;
             this.holder = player;
-            this.body.sleep();
-            console.log("Ball picked up by player");
+
+            this.velocity.set(0, 0, 0); // Topu tuttuğunda hızını sıfırla
+            this.hasScored = false;     // Topu alınca skor durumu sıfırlanmalı
         }
     }
 
-    // drop metodu (player.js'deki Enter ile bırakma için)
-    drop() {
-        if (this.isHeld) {
-            this.isHeld = false;
-            this.body.wakeUp();
-            const dropVelocity = new CANNON.Vec3(
-                (Math.random() - 0.5) * 0.3,
-                0.2, // Hafif yukarı doğru
-                (Math.random() - 0.5) * 0.3
-            );
-            this.body.velocity.copy(dropVelocity);
-            this.body.angularVelocity.set(
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 2
-            );
-            this.holder = null;
-            console.log("Top bırakıldı (drop metodu)");
-        }
-    }
-    checkBasket(hoopPosition) {
-        if (!this.hasScored && !this.isHeld) {
-            const basketHeight = 3.05;
-            const basketRadius = 0.45;
+    checkHoopCollision(hoops, onScoreCallback) { // onScoreCallback eklendi
+        if (!this.isMoving || this.hasScored) return;
 
-            // Top basket seviyesinden geçiyor mu?
-            if (Math.abs(this.mesh.position.y - basketHeight) < 0.2 &&
-                this.body.velocity.y < 0) {
+        hoops.forEach(hoop => {
+            const hoopCollisionMesh = hoop.userData.collisionMesh;
+            if (!hoopCollisionMesh) return;
 
-                // Top basket çemberi içinden geçiyor mu?
-                const horizontalDistance = new THREE.Vector2(
-                    this.mesh.position.x - hoopPosition.x,
-                    this.mesh.position.z - hoopPosition.z
-                ).length();
+            const hoopY = hoopCollisionMesh.position.y;
+            const hoopRadius = hoopCollisionMesh.geometry.parameters.radius; // Torus'un ana yarıçapı
 
-                if (horizontalDistance < basketRadius - this.radius) {
-                    console.log("BASKET!");
+            // Topun küresi, pota çemberinin sınır kutusu ile kesişiyor mu? (Hızlı ön kontrol)
+            const hoopBBox = new THREE.Box3().setFromObject(hoopCollisionMesh);
+            if (hoopBBox.intersectsSphere(this.ballSphere)) {
+                // Daha detaylı kontrol:
+                // 1. Top aşağı doğru mu hareket ediyor?
+                // 2. Top bir önceki karede pota çemberinin ÜSTÜNDE miydi?
+                // 3. Top şimdiki karede pota çemberinin ALTINDA veya HİZASINDA mı?
+                // 4. Topun X ve Z koordinatları çemberin içinde mi?
+                if (this.velocity.y < 0 &&
+                    this.previousPosition.y > hoopY &&
+                    this.mesh.position.y <= hoopY &&
+                    Math.abs(this.mesh.position.x - hoopCollisionMesh.position.x) < hoopRadius &&
+                    Math.abs(this.mesh.position.z - hoopCollisionMesh.position.z) < hoopRadius)
+                {
                     this.hasScored = true;
 
-                    // Skor durumunu sıfırla
-                    setTimeout(() => {
+                    if (onScoreCallback) {
+                        onScoreCallback(); // Skoru artırmak için game.js'deki fonksiyonu çağır
+                    }
+
+                    if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
+                    this.scoreTimeout = setTimeout(() => {
+
                         this.hasScored = false;
-                    }, 1000);
+                    }, 2000); // Aynı atışla tekrar skor olmasın diye 2 saniye bekle
                 }
 
             }
-        }
+        });
+
     }
 
 }

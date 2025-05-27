@@ -1,212 +1,281 @@
 // shooting.js
 
 import * as THREE from 'three';
-import { scene } from './scene.js'; // scene'i import ettiğinizden emin olun
+
+import { scene } from './scene.js';
+import { Ball } from './ball.js';
+
+// Yörüngeyi hesaplamak için yardımcı fonksiyon (Aynı kalıyor)
+function calculateTrajectory(startPos, startVel, gravity, numSteps) {
+    const points = [];
+    const currentPos = startPos.clone();
+    const currentVel = startVel.clone();
+    points.push(currentPos.clone());
+    for (let i = 1; i <= numSteps; i++) {
+        currentVel.y -= gravity;
+        currentPos.add(currentVel);
+        points.push(currentPos.clone());
+        if (currentPos.y < 0.1) break;
+    }
+    return points;
+}
 
 export class ShootingSystem {
-    constructor() {
-        this.mousePosition = { x: 0, y: 0 }; // Mouse Y dikey açı için kullanılacak
+    constructor(playerRef) { // <-- playerRef parametresi eklendi
+        this.mousePosition = { x: 0, y: 0 };
         this.throwPower = 0;
         this.maxThrowPower = 1.0;
-        this.isCharging = false;
-        this.powerDirection = 1;
         this.powerBarElement = this.createPowerBar();
-        this.directionArrow = null;
-        this.arrowLength = 1.8; // Ok uzunluğunu biraz artırdım
-        this.arrowColor = 0xffaa00; // Ok rengini değiştirdim (turuncu)
-        this.defaultThrowForce = 8;
-        this.chargedThrowMultiplier = 12;
+        this.trajectoryLine = null;
+        this.gravity = new Ball().gravity;
+        this.verticalAngle = Math.PI / 4;
+        this.minAngle = Math.PI / 8;
+        this.maxAngle = Math.PI / 2.5;
+        this.angleChangeSpeed = 0.02;
+        this.powerIncrement = 0.1;
+        this.isAimAssisted = false;
 
-        // Dikey atış açısı limitleri (radyan cinsinden)
-        this.minVerticalAngle = Math.PI / 18; // Minimum 10 derece yukarı
-        this.maxVerticalAngle = Math.PI / 2.8;  // Maksimum ~64 derece yukarı (daha yükseğe atış için)
+        this.player = playerRef; // <-- Oyuncu referansını sakla
+
 
         this.setupMouseListeners();
+        this.updatePowerBar();
     }
 
-    createPowerBar() {
-        // ... (createPowerBar fonksiyonu önceki gibi)
-        const powerBar = document.createElement('div');
-        powerBar.style.position = 'fixed';
-        powerBar.style.left = '20px';
-        powerBar.style.top = '20px';
-        powerBar.style.width = '20px';
-        powerBar.style.height = '200px';
-        powerBar.style.backgroundColor = '#333';
-        powerBar.style.border = '2px solid #fff';
-        powerBar.style.zIndex = '1000';
-
-        const powerLevel = document.createElement('div');
-        powerLevel.style.position = 'absolute';
-        powerLevel.style.bottom = '0';
-        powerLevel.style.width = '100%';
-        powerLevel.style.backgroundColor = '#4CAF50';
-        powerLevel.style.transition = 'height 0.05s linear';
-        powerLevel.style.height = '0%';
-
-        powerBar.appendChild(powerLevel);
-        document.body.appendChild(powerBar);
-        return powerBar;
+    createPowerBar() { /* ... Bu kısım aynı ... */
+        const powerBarContainer = document.createElement('div'); powerBarContainer.style.position = 'fixed';
+        powerBarContainer.style.left = '30px'; powerBarContainer.style.top = '50%';
+        powerBarContainer.style.transform = 'translateY(-50%)'; powerBarContainer.style.width = '20px';
+        powerBarContainer.style.height = '200px'; powerBarContainer.style.backgroundColor = '#222';
+        powerBarContainer.style.border = '2px solid #fff'; powerBarContainer.style.borderRadius = '5px';
+        powerBarContainer.style.overflow = 'hidden'; powerBarContainer.style.zIndex = '100';
+        const powerLevel = document.createElement('div'); powerLevel.style.position = 'absolute';
+        powerLevel.style.bottom = '0'; powerLevel.style.width = '100%';
+        powerLevel.style.backgroundColor = '#4CAF50'; powerLevel.style.transition = 'height 0.1s ease-out';
+        powerLevel.style.height = '0%'; powerBarContainer.appendChild(powerLevel);
+        document.body.appendChild(powerBarContainer); return powerBarContainer;
     }
+
 
     setupMouseListeners() {
         window.addEventListener('mousemove', (event) => {
-            // Mouse Y pozisyonunu alıyoruz, X'i artık yön için kullanmıyoruz
-            this.mousePosition.y = -(event.clientY / window.innerHeight) * 2 + 1; // [-1, 1] aralığında
+            if (!this.isAimAssisted) { // Sadece manuel nişanda mouse X'i kullan
+                this.mousePosition.x = -((event.clientX / window.innerWidth) * 2 - 1);
+            }
         });
     }
 
-    createDirectionArrow(position, direction) {
-        if (this.directionArrow) {
-            scene.remove(this.directionArrow);
-        }
-        const origin = new THREE.Vector3(position.x, position.y + 0.5, position.z); // Oyuncunun el hizası
-        // Başlangıçta ok yatay başlasın, updateDirectionArrow dikey açıyı ekleyecek
-        const horizontalDirection = new THREE.Vector3(direction.x, 0, direction.z).normalize();
-        this.directionArrow = new THREE.ArrowHelper(
-            horizontalDirection,
-            origin,
-            this.arrowLength,
-            this.arrowColor,
-            0.35, // Ok başı uzunluğu
-            0.25  // Ok başı genişliği
-        );
-        scene.add(this.directionArrow);
+    adjustAngle(amount) {
+        if (this.isAimAssisted) return; // Otomatik nişan aktifken açıyı manuel değiştirme
+        this.verticalAngle += amount;
+        this.verticalAngle = Math.max(this.minAngle, Math.min(this.maxAngle, this.verticalAngle));
     }
 
-    updateDirectionArrow(ball) {
-        if (!ball.isHeld || !ball.holder) {
-            if (this.directionArrow) {
-                scene.remove(this.directionArrow);
-                this.directionArrow = null;
-            }
-            return;
+    increasePower() {
+        if (this.isAimAssisted) return; // Otomatik nişan aktifken gücü manuel değiştirme
+
+        if (this.throwPower >= this.maxThrowPower) {
+            this.throwPower = 0;
+        } else {
+            this.throwPower += this.powerIncrement;
+            this.throwPower = Math.min(this.throwPower, this.maxThrowPower);
         }
-
-        if (!this.directionArrow && this.isCharging) {
-            const holderPos = ball.holder.getPosition();
-            // Oyuncunun mevcut baktığı yöne doğru bir ok oluştur
-            const playerYRotation = ball.holder.getRotationY();
-            const initialHorizontalDirection = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerYRotation);
-            this.createDirectionArrow(holderPos, initialHorizontalDirection);
-        }
-
-        if (!this.directionArrow) return;
-
-        const holderPosition = ball.holder.getPosition();
-        const arrowOrigin = holderPosition.clone();
-        arrowOrigin.y += 0.5; // Okun başlangıç noktasını ayarla
-        this.directionArrow.position.copy(arrowOrigin);
-
-        // 1. Yatay Yönü Belirle (Oyuncunun baktığı yön)
-        const baseHorizontalDirection = new THREE.Vector3(0, 0, -1); // Oyuncunun lokal -Z
-        const playerYRotation = ball.holder.getRotationY();
-        const horizontalDirection = baseHorizontalDirection.clone()
-            .applyAxisAngle(new THREE.Vector3(0, 1, 0), playerYRotation);
-
-        // 2. Dikey Açıyı Hesapla
-        const normalizedMouseY = (this.mousePosition.y + 1) / 2; // Mouse Y'yi [0, 1] aralığına getir
-        const verticalAngle = this.minVerticalAngle + normalizedMouseY * (this.maxVerticalAngle - this.minVerticalAngle);
-
-        // 3. Yatay Yöne Dikey Açıyı Uygula
-        // Oyuncunun sağına doğru olan vektörü bul (rotasyon ekseni için)
-        const rightVector = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), horizontalDirection).normalize();
-
-        const finalDirection3D = horizontalDirection.clone(); // Önce yatay yönü al
-        finalDirection3D.applyAxisAngle(rightVector, -verticalAngle); // Sonra dikey açıyı uygula (mouse yukarı = açı artar)
-        // Eksi işaretini kontrol et, mouse yukarı hareket ettiğinde topun yukarı gitmesi için.
-
-        this.directionArrow.setDirection(finalDirection3D.normalize()); // Okun yönünü 3D olarak ayarla
-
-        const currentVisualPower = this.isCharging ? this.throwPower : 0.3;
-        this.directionArrow.setLength(
-            this.arrowLength * (0.2 + currentVisualPower),
-            0.35,
-            0.25
-        );
-        const hue = (1 - this.throwPower / this.maxThrowPower) * 120;
-        this.directionArrow.setColor(new THREE.Color(`hsl(${hue}, 100%, 50%)`));
-    }
-
-    startCharging(ball) {
-        if (!ball.isHeld || ball.holder === null) return;
-        this.isCharging = true;
-        this.powerDirection = 1;
-        this.throwPower = 0;
         this.updatePowerBar();
-
-        const holderPos = ball.holder.getPosition();
-        const playerYRotation = ball.holder.getRotationY();
-        const initialHorizontalDirection = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerYRotation);
-        this.createDirectionArrow(holderPos, initialHorizontalDirection); // Ok oluşturulurken yatay yönle başla
     }
 
-    updateCharging(ball) {
-        if (this.isCharging) {
-            this.throwPower += 0.02 * this.powerDirection;
-            if (this.throwPower >= this.maxThrowPower) {
-                this.powerDirection = -1;
-                this.throwPower = this.maxThrowPower;
-            } else if (this.throwPower <= 0) {
-                this.powerDirection = 1;
-                this.throwPower = 0;
-            }
-            this.updatePowerBar();
+    calculateThrowVelocity(ball) {
+        const basePower = 0.35;
+        const powerBarFactor = 0.50;
+
+        // Yatay yönü mouse X ve oyuncu dönüşü ile belirle
+        const horizontalDirection = new THREE.Vector3(0, 0, -1);
+        let horizontalAngle;
+
+        if (this.isAimAssisted && this.lockedTargetDirection) {
+            // Otomatik nişanda kilitlenmiş yönü kullan
+            // lockedTargetDirection, oyuncuya göre değil, dünya koordinatlarında olmalı
+            // Bu yüzden oyuncu dönüşünü burada tekrar uygulamamalıyız.
+            // Aslında, lockedTargetDirection'ı doğrudan kullanabiliriz.
+            // Şimdilik, mousePosition.x'i kilitlenmiş bir değere set ettiğimizi varsayalım.
+            // Ya da daha iyisi, calculateThrowVelocity direkt bir "targetDirection" alsın.
+            // ŞİMDİLİK BASİT TUTALIM: Otomatik nişan horizontalAngle'ı da kilitler.
+            // Bu, performAutoShot içinde ayarlanacak. mousePosition.x'i orada set edeceğiz.
+             horizontalAngle = this.mousePosition.x * Math.PI / 4;
+        } else {
+             horizontalAngle = this.mousePosition.x * Math.PI / 4;
         }
-        this.updateDirectionArrow(ball); // Şarj sırasında yön okunu sürekli güncelle
+
+        horizontalDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), horizontalAngle);
+        if (ball.holder) {
+            horizontalDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), ball.holder.rotation.y);
+        }
+
+        let throwDirection = horizontalDirection.clone();
+        throwDirection.y = Math.tan(this.verticalAngle);
+        throwDirection.normalize();
+
+        const finalPower = basePower + (this.throwPower * powerBarFactor);
+        return throwDirection.multiplyScalar(finalPower);
     }
 
-    updatePowerBar() {
-        // ... (updatePowerBar fonksiyonu önceki gibi)
+    hideTrajectory() { /* ... Bu kısım aynı ... */
+         if (this.trajectoryLine) { scene.remove(this.trajectoryLine); this.trajectoryLine.geometry.dispose(); this.trajectoryLine.material.dispose(); this.trajectoryLine = null; }
+    }
+
+    showTrajectory(ball) { this.updateTrajectoryLine(ball); }
+
+    updateTrajectoryLine(ball) { /* ... Bu kısım aynı ... */
+        if (!ball.isHeld || !ball.holder) { this.hideTrajectory(); return; }
+        const initialVelocity = this.calculateThrowVelocity(ball);
+        const points = calculateTrajectory(ball.mesh.position, initialVelocity, this.gravity, 70);
+        this.hideTrajectory(); if (points.length < 2) return;
+        const curve = new THREE.CatmullRomCurve3(points);
+        const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.03, 8, false);
+        const tubeMat = new THREE.MeshBasicMaterial({ color: 0xffa500 });
+        this.trajectoryLine = new THREE.Mesh(tubeGeo, tubeMat);
+        scene.add(this.trajectoryLine);
+    }
+
+    update(ball) { // hoops parametresini kaldırdık, X tuşu için ayrıca gönderiliyor
+        if (ball.isHeld) {
+            this.updateTrajectoryLine(ball);
+        }
+    }
+
+    updatePowerBar() { /* ... Bu kısım aynı ... */
+        if (!this.powerBarElement) return; const powerLevel = this.powerBarElement.firstChild; if (!powerLevel) return;
+        const percentage = (this.throwPower / this.maxThrowPower) * 100; powerLevel.style.height = `${percentage}%`;
+        const hue = (1 - this.throwPower / this.maxThrowPower) * 120;
+        powerLevel.style.backgroundColor = `hsl(${hue}, 90%, 50%)`;
     }
 
     releaseCharge(ball) {
-        if (!ball.isHeld || ball.holder === null) return;
+        if (!ball.isHeld) return;
+        if (!this.isAimAssisted && this.throwPower <= 0) return;
 
-        const wasCharging = this.isCharging;
-        this.isCharging = false;
+        console.log("Atış yapılıyor... Güç:", this.throwPower.toFixed(1), "Açı:", THREE.MathUtils.radToDeg(this.verticalAngle).toFixed(1));
+        
+        // Atış animasyonu player.js'de mousedown içinde tetikleniyor.
+        // Burada sadece topu fırlatma mantığı kalıyor.
+        // Eğer atış animasyonu burada tetiklenecekse, this.player üzerinden çağrılabilirdi:
+        // if (this.player && this.player.actions['shoot']) {
+        //     this.player.playAnimationOnce('shoot', () => {
+        //         const velocity = this.calculateThrowVelocity(ball);
+        //         ball.throw(velocity);
+        //     });
+        // } else {
+        //     const velocity = this.calculateThrowVelocity(ball);
+        //     ball.throw(velocity);
+        // }
+        // Şimdilik player.js bu mantığı yönetiyor.
 
-        // Atış yönünü hesapla (updateDirectionArrow ile aynı mantık)
-        const baseHorizontalDirection = new THREE.Vector3(0, 0, -1);
-        const playerYRotation = ball.holder.getRotationY();
-        const horizontalDirection = baseHorizontalDirection.clone()
-            .applyAxisAngle(new THREE.Vector3(0, 1, 0), playerYRotation);
-
-        const normalizedMouseY = (this.mousePosition.y + 1) / 2;
-        const verticalAngle = this.minVerticalAngle + normalizedMouseY * (this.maxVerticalAngle - this.minVerticalAngle);
-
-        const rightVector = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), horizontalDirection).normalize();
-        const finalThrowDirection3D = horizontalDirection.clone();
-        finalThrowDirection3D.applyAxisAngle(rightVector, -verticalAngle);
-        finalThrowDirection3D.normalize();
-
-        let powerRatio = this.throwPower / this.maxThrowPower;
-        if (!wasCharging || powerRatio < 0.05) {
-            powerRatio = 0.4;
-        }
-
-        const finalSpeed = this.defaultThrowForce + (powerRatio * this.chargedThrowMultiplier);
-        const finalVelocity = finalThrowDirection3D.multiplyScalar(finalSpeed);
-
-        ball.throw(finalVelocity);
+        const velocity = this.calculateThrowVelocity(ball);
+        ball.throw(velocity);
 
         this.throwPower = 0;
-        this.powerDirection = 1;
         this.updatePowerBar();
 
-        if (this.directionArrow) {
-            scene.remove(this.directionArrow);
-            this.directionArrow = null;
+        this.hideTrajectory();
+        this.isAimAssisted = false;
+    }
+
+    // --- GÜNCELLENDİ: performAutoShot ---
+    performAutoShot(ball, hoops) {
+        if (!ball.isHeld || !hoops || hoops.length === 0) return;
+
+        console.log("X Tuşu: Otomatik Nişan ve Güç Ayarlanıyor...");
+        this.hideTrajectory(); // Önceki yörüngeyi temizle
+
+        const playerPos = ball.holder.position.clone();
+        const playerDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), ball.holder.rotation.y).normalize();
+
+        let targetHoop = null;
+        let maxDot = 0.1;
+        hoops.forEach(hoop => {
+            if (hoop.userData && hoop.userData.collisionMesh) {
+                const hoopPos = hoop.userData.collisionMesh.position;
+                const toHoop = hoopPos.clone().sub(playerPos).normalize();
+                const dot = playerDir.dot(toHoop);
+                if (dot > maxDot) {
+                    maxDot = dot;
+                    targetHoop = hoop;
+                }
+            }
+        });
+
+        if (targetHoop) {
+            const targetPos = targetHoop.userData.collisionMesh.position;
+            const startPos = ball.mesh.position.clone();
+            const g = this.gravity;
+            const T_frames = 65; // Uçuş süresi (frame) - Atışın kavisini belirler
+            const dP = targetPos.clone().sub(startPos);
+
+            // İdeal dikey hız (Vy) ve yatay hızların toplam büyüklüğü (V_horizontal_magnitude)
+            const idealVy = (dP.y / T_frames) + (g * (T_frames + 1) / 2);
+            // Yataydaki mesafeyi T_frames'de almak için gereken yatay hız büyüklüğü
+            const dP_horizontal = new THREE.Vector3(dP.x, 0, dP.z);
+            const V_horizontal_magnitude = dP_horizontal.length() / T_frames;
+
+            // Atış yönünü belirle (yatayda hedefe doğru)
+            const aimDirectionHorizontal = dP_horizontal.normalize();
+
+            // Yönümüzü (mouse X'i etkileyen) bu ideal yatay yöne göre ayarlamalıyız.
+            // Bu, player'ın Z eksenine göre ne kadar döneceğini bulmak demek.
+            // Player'ın mevcut yönü (0,0,-1) + player.rotation.y
+            // Hedefin yönü aimDirectionHorizontal
+            // Aradaki açıyı bulup mousePosition.x'e yansıtmak yerine, doğrudan
+            // calculateThrowVelocity içinde kullanılacak bir yön ayarlayabiliriz.
+            // ŞİMDİLİK, horizontal açıyı manuel olarak ayarlayalım, sonra bunu hassaslaştırırız.
+            // playerDir'den aimDirectionHorizontal'a olan açıyı bulup mouse'a set etmek yerine,
+            // en iyisi calculateThrowVelocity'nin doğrudan bir hedef yön almasını sağlamak.
+            // Ya da performAutoShot'ta geçici olarak mousePosition.x'i override etmek.
+
+            // Geçici Çözüm: mousePosition.x'i hedefe göre ayarla
+            // Bu kısım çok doğru değil ama bir başlangıç
+            const worldForward = new THREE.Vector3(0, 0, -1);
+            const playerRotationY = ball.holder.rotation.y;
+            // Oyuncunun kendi "ön" vektörünü al
+            const playerFrontVector = worldForward.clone().applyAxisAngle(new THREE.Vector3(0,1,0), playerRotationY);
+            // Oyuncunun önü ile hedefe olan yatay yön arasındaki açıyı bul
+            let angleToTarget = playerFrontVector.angleTo(aimDirectionHorizontal);
+            // Sağa mı sola mı olduğunu bulmak için cross product
+            const cross = playerFrontVector.clone().cross(aimDirectionHorizontal);
+            if (cross.y < 0) angleToTarget = -angleToTarget; // Eğer sağdaysa negatif açı
+            // Bu açıyı mousePosition.x'e çevir
+            this.mousePosition.x = Math.max(-1, Math.min(1, (angleToTarget / (Math.PI / 4))));
+
+
+            // İdeal dikey açıyı ve gücü bulmak için:
+            // finalPower * sin(verticalAngle) = idealVy
+            // finalPower * cos(verticalAngle) = V_horizontal_magnitude
+            // tan(verticalAngle) = idealVy / V_horizontal_magnitude
+            this.verticalAngle = Math.atan2(idealVy, V_horizontal_magnitude);
+            this.verticalAngle = Math.max(this.minAngle, Math.min(this.maxAngle, this.verticalAngle)); // Sınırla
+
+            // Gücü ayarla
+            // finalPower = sqrt(idealVy^2 + V_horizontal_magnitude^2)
+            const idealTotalSpeed = Math.sqrt(idealVy * idealVy + V_horizontal_magnitude * V_horizontal_magnitude);
+            const basePower = 0.35;
+            const powerBarFactor = 0.50;
+            // idealTotalSpeed = basePower + (this.throwPower * powerBarFactor)
+            // this.throwPower = (idealTotalSpeed - basePower) / powerBarFactor
+            this.throwPower = (idealTotalSpeed - basePower) / powerBarFactor;
+            this.throwPower = Math.max(0, Math.min(this.maxThrowPower, this.throwPower)); // Sınırla
+
+            this.isAimAssisted = true; // Nişan yardımı aktif
+            this.updatePowerBar();
+            this.updateTrajectoryLine(ball); // Yeni ayarlarla yörüngeyi göster
+            console.log("Otomatik Nişan Ayarlandı. Sol Tıkla Atış Yap.");
+
+        } else {
+            console.log("Uygun bir hedef pota bulunamadı.");
+            this.isAimAssisted = false;
         }
     }
 
-    dispose() {
-        if (this.powerBarElement && this.powerBarElement.parentNode) {
-            this.powerBarElement.parentNode.removeChild(this.powerBarElement);
-        }
-        if (this.directionArrow) {
-            scene.remove(this.directionArrow);
-            this.directionArrow = null;
-        }
+    dispose() { /* ... Bu kısım aynı ... */
+        if (this.powerBarElement && this.powerBarElement.parentNode) { this.powerBarElement.parentNode.removeChild(this.powerBarElement); }
+        this.hideTrajectory();
     }
+
 }
