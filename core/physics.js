@@ -1,26 +1,23 @@
+// core/physics.js
+
 import * as CANNON from 'cannon-es';
 
-// Fizik dünyası
+// Dünya ve materyaller
 export const world = new CANNON.World({
-    gravity: new CANNON.Vec3(0, -9.82, 0)
+    gravity: new CANNON.Vec3(0, -9.82, 0),
 });
 
-// Fizik dünyasını güncelle
-export function updatePhysics() {
-    world.step(1 / 60);  // 60 FPS için sabit time step
-}
-
-// Materyal tanımlamaları
 export const groundMaterial = new CANNON.Material("groundMaterial");
 export const playerMaterial = new CANNON.Material("playerMaterial");
 export const ballMaterial = new CANNON.Material("ballMaterial");
+export const wallMaterial = new CANNON.Material("wallMaterial"); // Duvarlar için yeni materyal
 
-// Contact material tanımlamaları
+// Temas materyalleri
 const playerGroundContact = new CANNON.ContactMaterial(
     groundMaterial,
     playerMaterial,
     {
-        friction: 0,
+        friction: 0.1,
         restitution: 0.0,
         contactEquationStiffness: 1e8,
         contactEquationRelaxation: 3
@@ -30,143 +27,199 @@ const playerGroundContact = new CANNON.ContactMaterial(
 const ballGroundContact = new CANNON.ContactMaterial(
     groundMaterial,
     ballMaterial,
-    {
-        friction: 0.4,
-        restitution: 0.6,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3
-    }
+    { friction: 0.4, restitution: 0.6 }
 );
-
-// Player-Ball çarpışması için contact material
 const playerBallContact = new CANNON.ContactMaterial(
     playerMaterial,
     ballMaterial,
+    { friction: 0.1, restitution: 0.5 }
+);
+
+// Oyuncu-Duvar teması
+const playerWallContact = new CANNON.ContactMaterial(
+    playerMaterial,
+    wallMaterial,
     {
-        friction: 0.1,
-        restitution: 0.5,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3
+        friction: 0.05, // Duvara sürtünme az olsun
+        restitution: 0.1  // Duvardan hafifçe sekebilir
     }
 );
 
-// Fizik motorunu başlat
+// Top-Duvar teması
+const ballWallContact = new CANNON.ContactMaterial(
+    ballMaterial,
+    wallMaterial,
+    {
+        friction: 0.3,
+        restitution: 0.8 // Top duvardan iyi seksin
+    }
+);
+
+
 export function initPhysics() {
-    // Material özellikleri
     groundMaterial.friction = 0.3;
-    groundMaterial.restitution = 0.4;
+    groundMaterial.restitution = 0.3;
+    playerMaterial.friction = 0.1;
+    playerMaterial.restitution = 0.0;
+    wallMaterial.friction = 0.05; // Duvar materyalinin özellikleri
+    wallMaterial.restitution = 0.1;
 
-    // Contact material'leri dünyaya ekle
+
     world.addContactMaterial(playerGroundContact);
-    world.addContactMaterial(ballGroundContact);
-    world.addContactMaterial(playerBallContact);  // Yeni contact material'i ekle
+    if (!world.contactmaterials.includes(ballGroundContact)) {
+        world.addContactMaterial(ballGroundContact);
+    }
+    if (!world.contactmaterials.includes(playerBallContact)) {
+        world.addContactMaterial(playerBallContact);
+    }
+    world.addContactMaterial(playerWallContact);
+    world.addContactMaterial(ballWallContact);
 
-    // Genel fizik ayarları
+
     world.defaultContactMaterial.friction = 0.5;
     world.defaultContactMaterial.restitution = 0.3;
     world.solver.iterations = 10;
-    world.solver.tolerance = 0.001;
+    world.solver.tolerance = 0.01;
 
-    // Zemini oluştur
     createGroundPhysics();
+    createCourtBoundaries(); // Saha sınırlarını oluştur
 }
 
-// Zemin için fizik gövdesi oluştur
 export function createGroundPhysics() {
     const groundShape = new CANNON.Plane();
     const groundBody = new CANNON.Body({
         mass: 0,
         shape: groundShape,
         material: groundMaterial,
-        position: new CANNON.Vec3(0, 0, 0),
-        collisionFilterGroup: 1,
-        collisionFilterMask: -1  // Her şeyle çarpışsın
+        position: new CANNON.Vec3(0, 0, 0)
     });
-
-    groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    groundBody.position.set(0, 0, 0);
-
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     world.addBody(groundBody);
     return groundBody;
 }
 
-// Top için fizik gövdesi oluştur
-export function createBallPhysics(radius) {
-    const shape = new CANNON.Sphere(radius);
-    const body = new CANNON.Body({
-        mass: 0.6,
-        shape: shape,
-        material: ballMaterial,
-        position: new CANNON.Vec3(2, 2, 0), // Oyuncudan biraz uzağa yerleştir
-        collisionFilterGroup: 2,
-        collisionFilterMask: -1  // Her şeyle çarpışsın
+// Saha sınırlarını oluşturan fonksiyon
+export function createCourtBoundaries() {
+    const courtWidth = 15.24; // world.js'deki saha genişliği ile aynı olmalı
+    const courtLength = 28.65; // world.js'deki saha uzunluğu ile aynı olmalı
+    const wallHeight = 10; // Duvarların yüksekliği (oyuncunun üzerinden atlayamayacağı kadar)
+    const wallThickness = 0.5; // Duvarların kalınlığı
+
+    const halfWidth = courtWidth / 2;
+    const halfLength = courtLength / 2;
+
+    // Duvar şekli (Box)
+    const wallShapeEW = new CANNON.Box(new CANNON.Vec3(halfWidth, wallHeight / 2, wallThickness / 2)); // Doğu-Batı duvarları
+    const wallShapeNS = new CANNON.Box(new CANNON.Vec3(wallThickness / 2, wallHeight / 2, halfLength)); // Kuzey-Güney duvarları
+
+    // Duvarlar için gövdeler
+    // Kuzey Duvarı (+Z yönü)
+    const northWall = new CANNON.Body({
+        mass: 0,
+        shape: wallShapeEW,
+        material: wallMaterial,
+        position: new CANNON.Vec3(0, wallHeight / 2, halfLength + wallThickness / 2)
     });
+    world.addBody(northWall);
 
-    body.linearDamping = 0.3;
-    body.angularDamping = 0.3;
-    body.allowSleep = true;  // Performans için uyku moduna geçebilir
-    body.sleepSpeedLimit = 0.1;  // Bu hızın altındayken uyuyabilir
-    body.sleepTimeLimit = 1;  // 1 saniye hareketsizlikten sonra uyu
+    // Güney Duvarı (-Z yönü)
+    const southWall = new CANNON.Body({
+        mass: 0,
+        shape: wallShapeEW,
+        material: wallMaterial,
+        position: new CANNON.Vec3(0, wallHeight / 2, -halfLength - wallThickness / 2)
+    });
+    world.addBody(southWall);
 
-    world.addBody(body);
-    return body;
+    // Doğu Duvarı (+X yönü)
+    const eastWall = new CANNON.Body({
+        mass: 0,
+        shape: wallShapeNS,
+        material: wallMaterial,
+        position: new CANNON.Vec3(halfWidth + wallThickness / 2, wallHeight / 2, 0)
+    });
+    world.addBody(eastWall);
+
+    // Batı Duvarı (-X yönü)
+    const westWall = new CANNON.Body({
+        mass: 0,
+        shape: wallShapeNS,
+        material: wallMaterial,
+        position: new CANNON.Vec3(-halfWidth - wallThickness / 2, wallHeight / 2, 0)
+    });
+    world.addBody(westWall);
 }
 
-// Oyuncu için fizik gövdesi oluştur
+
 export function createPlayerPhysics() {
-    const shape = new CANNON.Box(new CANNON.Vec3(0.3, 0.6, 0.3));
+    const playerHeight = 1.2;
+    const playerRadius = 0.3;
+    const shape = new CANNON.Box(new CANNON.Vec3(playerRadius, playerHeight / 2, playerRadius));
+
     const body = new CANNON.Body({
         mass: 70,
-        collisionResponse: true,
-        fixedRotation: true, // Oyuncunun dönmesini engelle
         shape: shape,
         material: playerMaterial,
-        position: new CANNON.Vec3(0, 2, 0),
-        collisionFilterGroup: 4,
-        collisionFilterMask: -1,  // Her şeyle çarpışsın
-        fixedRotation: true,
-        linearDamping: 0.9
+        position: new CANNON.Vec3(0, playerHeight / 2 + 0.05, 0),
+        linearDamping: 0.1,
+        angularDamping: 0.1,
     });
+
+    body.updateMassProperties();
+    body.invInertia.x = 0;
+    body.invInertia.z = 0;
+    body.invInertiaSolve.x = 0;
+    body.invInertiaSolve.z = 0;
+    body.updateInertiaWorld(true);
+
 
     world.addBody(body);
     return body;
 }
 
+export function createBallPhysics(radius = 0.2) {
+    const shape = new CANNON.Sphere(radius);
+    const body = new CANNON.Body({
+        mass: 0.6, shape: shape, material: ballMaterial,
+        position: new CANNON.Vec3(2, 2, 0),
+        linearDamping: 0.3, angularDamping: 0.3
+    });
+    world.addBody(body);
+    return body;
+}
+export function createHoopPhysics(position = { x: 0, y: 3.05, z: 12.5 }) {
+    const poleMaterial = groundMaterial;
+    const boardMaterial = groundMaterial;
+    const ringMaterial = groundMaterial; // Çember için de duvar materyali kullanılabilir veya ayrı bir tane
 
-// Pota için fiziksel gövde oluştur
-export function createHoopPhysics(position) {
-    // Pota direği için fiziksel gövde
-    const poleShape = new CANNON.Cylinder(0.15, 0.15, 3.05, 8);
+    const poleShape = new CANNON.Cylinder(0.1, 0.1, position.y, 8);
     const poleBody = new CANNON.Body({
-        mass: 0, // Statik cisim
-        position: new CANNON.Vec3(position.x, position.y / 2, position.z),
-        shape: poleShape,
-        material: groundMaterial // Zemin materyalini kullan
+        mass: 0, shape: poleShape, material: poleMaterial,
+        position: new CANNON.Vec3(position.x, position.y / 2, position.z)
     });
-
-    // Pota tahtası için fiziksel gövde
-    const boardShape = new CANNON.Box(new CANNON.Vec3(0.9, 0.75, 0.15)); // Boyutların yarısını kullan
-    const boardBody = new CANNON.Body({
-        mass: 0, // Statik cisim
-        position: new CANNON.Vec3(position.x, 3.05 - 0.75, position.z + 0.2),
-        shape: boardShape,
-        material: groundMaterial // Zemin materyalini kullan
-    });
-
-    // Çember için fiziksel gövde
-    const ringShape = new CANNON.Cylinder(0.45, 0.45, 0.02, 8); // Çember boyutları
-    const ringBody = new CANNON.Body({
-        mass: 0,
-        position: new CANNON.Vec3(position.x, position.y, position.z + 0.3), // Biraz öne çıkar
-        shape: ringShape,
-        material: groundMaterial
-    });
-    ringBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2); // Yatay pozisyon
-
     world.addBody(poleBody);
+
+    const boardDimensions = { width: 1.8, height: 1.05, depth: 0.05 };
+    const boardShape = new CANNON.Box(new CANNON.Vec3(boardDimensions.width / 2, boardDimensions.height / 2, boardDimensions.depth / 2));
+    const boardBody = new CANNON.Body({
+        mass: 0, shape: boardShape, material: boardMaterial,
+        position: new CANNON.Vec3(position.x, position.y - boardDimensions.height / 2 + 0.1, position.z - boardDimensions.depth / 2 - 0.225)
+    });
     world.addBody(boardBody);
+
+    const ringRadius = 0.225;
+    const ringThickness = 0.02;
+    const ringShape = new CANNON.Cylinder(ringRadius, ringRadius, ringThickness, 16);
+    const ringBody = new CANNON.Body({
+        mass: 0, shape: ringShape, material: ringMaterial, // Çember için ringMaterial
+        position: new CANNON.Vec3(position.x, position.y, position.z)
+    });
+    ringBody.quaternion.setFromEuler(Math.PI / 2, 0, 0);
     world.addBody(ringBody);
     return { poleBody, boardBody, ringBody };
+}
 
-    return { poleBody, boardBody };
+
+export function updatePhysics() {
+    world.step(1 / 60);
 }
