@@ -13,6 +13,8 @@ import * as THREE from 'three';
 export const gltf_loader = new GLTFLoader();
 export const fbx_loader = new FBXLoader(); // <-- YENİ LOADER
 let updatePlayerMovement; // setupPlayerControls'dan dönen fonksiyonu saklar
+let cleanupPlayerSystem = null; // Arkadaşının eklediği cleanup sistemi
+let cleanupResizeHandler = null; // Arkadaşının eklediği cleanup sistemi
 let ball;
 let alien; // Add alien variable
 export let hoops = [];
@@ -26,7 +28,7 @@ export const levelSettings = {
         name: "Dünya",
         gravity: 0.015,
         courtTexture: 'textures/court_texture.jpg',
-        hdriPath: 'textures/hdri/earth_sky.hdr', // Dünya için HDRI yolu
+        hdriPath: 'textures/hdri/PlanetaryEarth4k.hdr', // Dünya için HDRI yolu
         skyColor: 0x87CEEB // HDRI yüklenemezse kullanılacak yedek renk
     },
     2: {
@@ -53,6 +55,7 @@ export const levelSettings = {
 };
 
 const rgbeLoader = new RGBELoader(); // RGBELoader'ı bir kere oluştur
+const clock = new THREE.Clock(); // Arkadaşının eklediği deltaTime için
 
 function setEnvironment(settings) {
     return new Promise((resolve, reject) => {
@@ -79,14 +82,14 @@ function setEnvironment(settings) {
 
 function updateScoreDisplay() {
     if (scoreElement) {
-        scoreElement.innerText = 'Skor: ' + score;
+        scoreElement.innerText = 'Score: ' + score;
     }
 }
 
 export function incrementScore() {
     score++;
     updateScoreDisplay();
-    console.log("Skor:", score);
+    console.log("Score:", score);
 }
 
 let renderer;
@@ -113,23 +116,36 @@ function cleanupScene() {
         console.log("Yörünge çizgisi (varsa) kaldırıldı.");
     }
 
-
-    // Sahnedeki diğer nesneleri (ışıklar ve kamera hariç) kaldır
+    // Arkadaşının gelişmiş cleanup sistemi
     for (let i = globalScene.children.length - 1; i >= 0; i--) {
         const child = globalScene.children[i];
-        if (child.type !== "PerspectiveCamera" &&
-            child.type !== "DirectionalLight" &&
-            child.type !== "AmbientLight") {
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) {
-                if (Array.isArray(child.material)) {
-                    child.material.forEach(material => { if (material.dispose) material.dispose(); });
-                } else {
-                    if (child.material.dispose) child.material.dispose();
+        // Kamera ve ışıkları sahnede tut
+        if (child.isCamera || child.isLight) {
+            continue;
+        }
+
+        // Belleği temizle
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach(material => { if (material.dispose) material.dispose(); });
+            } else if (child.material.dispose) {
+                child.material.dispose();
+            }
+        }
+        child.traverse(subChild => {
+            if (subChild.isMesh) {
+                if (subChild.geometry) subChild.geometry.dispose();
+                if (subChild.material) {
+                    if (Array.isArray(subChild.material)) {
+                        subChild.material.forEach(material => { if (material.dispose) material.dispose(); });
+                    } else if (subChild.material.dispose) {
+                        subChild.material.dispose();
+                    }
                 }
             }
-            globalScene.remove(child);
-        }
+        });
+        globalScene.remove(child);
     }
     hoops = []; // Pota dizisini sıfırla
     // ball ve player init içinde yeniden oluşturulacak
@@ -144,19 +160,20 @@ async function resetAndInitLevel() {
         console.log("Animasyon durduruldu.");
     }
 
-    // Event listener'ları temizlemek için daha iyi bir yöntem gerekir.
-    // Şimdilik, setupPlayerControls içindeki listener'lar birikebilir.
-    // player.js'deki shootingSystem.dispose() çağrılmalı.
-    if (typeof updatePlayerMovement === 'function') {
-        // Bu, listener'ları kaldırmaz, sadece update döngüsünü durdurur.
-        // Bu, shoot.js'deki shootingSystem'in dispose metodunu çağırmıyor.
-        // Daha iyi bir çözüm, setupPlayerControls'un bir "cleanup" fonksiyonu döndürmesidir.
-        updatePlayerMovement = null;
+    // Arkadaşının cleanup sistemi
+    if (cleanupPlayerSystem) {
+        cleanupPlayerSystem();
+        cleanupPlayerSystem = null;
+    }
+    updatePlayerMovement = null;
+    if (cleanupResizeHandler) {
+        cleanupResizeHandler();
+        cleanupResizeHandler = null;
     }
 
     cleanupScene();
 
-    score = 0; // Seviye değişince skoru sıfırla
+    score = 0; // Seviye değişince Scoreu sıfırla
     updateScoreDisplay();
 
     if (renderer && renderer.domElement.parentElement) {
@@ -259,10 +276,13 @@ async function init() {
     hoops = []; // Önceki seviyeden kalan potaları temizle (cleanupScene'de de yapılıyor ama burada da garanti)
     createHoops(hoops, gltf_loader);
 
-    updatePlayerMovement = setupPlayerControls(player, ball, hoops);
+    // Arkadaşının cleanup sistemi ile uyumlu
+    const playerControlSystem = setupPlayerControls(player, ball, hoops);
+    updatePlayerMovement = playerControlSystem.update;
+    cleanupPlayerSystem = playerControlSystem.cleanup;
 
     enableCameraMotions(renderer, player);
-    handleWindowResize(camera); // Bu da event listener ekler, idealde temizlenmeli
+    cleanupResizeHandler = handleWindowResize(camera, renderer); // Arkadaşının cleanup sistemi
     createLights(); // Bu ışıklar HDRI ile birlikte çalışacak
     createCourt(settings.courtTexture);
 
@@ -293,6 +313,7 @@ async function init() {
 
     if (!animationFrameId) {
         console.log("Animasyon döngüsü başlatılıyor.");
+        clock.start(); // Arkadaşının eklediği deltaTime için
         animate(renderer, globalScene, camera);
     }
 }
@@ -300,12 +321,14 @@ async function init() {
 function animate(renderer, sceneRef, cameraRef) {
     animationFrameId = requestAnimationFrame(() => animate(renderer, sceneRef, cameraRef));
 
+    const deltaTime = clock.getDelta(); // Arkadaşının eklediği deltaTime
+
     if (!isGameOver) {
         if (updatePlayerMovement) {
-            updatePlayerMovement();
+            updatePlayerMovement(deltaTime); // Arkadaşının deltaTime parametresi
         }
         if (ball) {
-            ball.update();
+            ball.update(deltaTime); // Arkadaşının deltaTime parametresi
             ball.checkHoopCollision(hoops, incrementScore);
         }
         if (alien) {

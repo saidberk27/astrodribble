@@ -33,7 +33,8 @@ export class Ball {
         this.tempQuaternion = new THREE.Quaternion();
     }
 
-    update() {
+    // GÜNCELLENDİ: update fonksiyonu artık deltaTime parametresi alıyor
+    update(deltaTime) {
         // Konum güncellenmeden ÖNCE mevcut konumu sakla
         this.previousPosition.copy(this.mesh.position);
 
@@ -48,9 +49,15 @@ export class Ball {
             this.mesh.position.copy(this.holder.position).add(rotatedOffset);
 
         } else if (this.isMoving) {
-            // Top havadaysa (fizik simülasyonu)
-            this.velocity.y -= this.gravity; // Yerçekimi uygula
-            this.mesh.position.add(this.velocity); // Hıza göre pozisyonu güncelle
+            // --- FİZİK GÜNCELLEMESİ (deltaTime İLE DÜZELTİLDİ) ---
+            // 60 FPS'i baz alarak bir ölçekleme faktörü oluşturuyoruz.
+            const timeScale = deltaTime * 60;
+
+            // Yerçekimini geçen süreye göre uygula
+            this.velocity.y -= this.gravity * timeScale;
+            // Hızı geçen süreyle çarparak pozisyonu güncelle
+            this.mesh.position.add(this.velocity.clone().multiplyScalar(timeScale));
+            // --------------------------------------------------------
 
             // --- SINIR KONTROLLERİ (Saha Dışı ve Zemin/Tavan) ---
             const courtWidth = 15.24; // Orijinal saha genişliği
@@ -141,34 +148,36 @@ export class Ball {
 
             // Topun küresi, pota çemberinin sınır kutusu ile kesişiyor mu? (Hızlı ön kontrol)
             const hoopBBox = new THREE.Box3().setFromObject(hoopCollisionMesh);
-            // hoopBBox'ı da effectiveHoopRadius'a göre genişletmek gerekebilir
-            // Ancak bu, topun X ve Z koordinatları kontrolü ile daha iyi yapılır.
 
-            // Topun X ve Z koordinatlarının pota çemberinin içinde olup olmadığını kontrol edin
-            const distanceToHoopCenterXZ = Math.sqrt(
-                Math.pow(this.mesh.position.x - hoopCollisionMesh.position.x, 2) +
-                Math.pow(this.mesh.position.z - hoopCollisionMesh.position.z, 2)
-            );
+            if (hoopBBox.intersectsSphere(this.ballSphere)) {
+                // Topun X ve Z koordinatlarının pota çemberinin içinde olup olmadığını kontrol edin
+                const distanceToHoopCenterXZ = Math.sqrt(
+                    Math.pow(this.mesh.position.x - hoopCollisionMesh.position.x, 2) +
+                    Math.pow(this.mesh.position.z - hoopCollisionMesh.position.z, 2)
+                );
 
-            if (distanceToHoopCenterXZ < effectiveHoopRadius) { // Yeni: Etkili yarıçapı kullan
-                // Daha detaylı kontrol:
-                // 1. Top aşağı doğru mu hareket ediyor?
-                // 2. Top bir önceki karede pota çemberinin ÜSTÜNDE miydi?
-                // 3. Top şimdiki karede pota çemberinin ALTINDA veya HİZASINDA mı?
-                // 4. Topun X ve Z koordinatları çemberin içinde mi? (Yukarıda kontrol edildi)
-                if (this.velocity.y < 0 &&
-                    this.previousPosition.y > hoopY &&
-                    this.mesh.position.y <= hoopY) {
-                    this.hasScored = true;
+                if (distanceToHoopCenterXZ < effectiveHoopRadius) { // Yeni: Etkili yarıçapı kullan
+                    // Daha detaylı kontrol:
+                    // 1. Top aşağı doğru mu hareket ediyor?
+                    // 2. Top bir önceki karede pota çemberinin ÜSTÜNDE miydi?
+                    // 3. Top şimdiki karede pota çemberinin ALTINDA veya HİZASINDA mı?
+                    // 4. Topun X ve Z koordinatları çemberin içinde mi? (Yukarıda kontrol edildi)
+                    if (this.velocity.y < 0 &&
+                        this.previousPosition.y > hoopY &&
+                        this.mesh.position.y <= hoopY) {
 
-                    if (onScoreCallback) {
-                        onScoreCallback();
+                        console.log("%cSKOR!", "color: green; font-size: 24px;");
+                        this.hasScored = true;
+
+                        if (onScoreCallback) {
+                            onScoreCallback();
+                        }
+
+                        if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
+                        this.scoreTimeout = setTimeout(() => {
+                            this.hasScored = false;
+                        }, 2000);
                     }
-
-                    if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
-                    this.scoreTimeout = setTimeout(() => {
-                        this.hasScored = false;
-                    }, 2000);
                 }
             }
         });

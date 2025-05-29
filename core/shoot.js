@@ -31,6 +31,7 @@ export class ShootingSystem {
         this.angleChangeSpeed = 0.02;
         this.powerIncrement = 0.1;
         this.isAimAssisted = false;
+        this.autoAimVelocity = new THREE.Vector3(); // Arkadaşının eklediği özellik
 
         this.player = playerRef; // <-- Oyuncu referansını sakla
 
@@ -95,9 +96,9 @@ export class ShootingSystem {
             // Ya da daha iyisi, calculateThrowVelocity direkt bir "targetDirection" alsın.
             // ŞİMDİLİK BASİT TUTALIM: Otomatik nişan horizontalAngle'ı da kilitler.
             // Bu, performAutoShot içinde ayarlanacak. mousePosition.x'i orada set edeceğiz.
-             horizontalAngle = this.mousePosition.x * Math.PI / 4;
+            horizontalAngle = this.mousePosition.x * Math.PI / 4;
         } else {
-             horizontalAngle = this.mousePosition.x * Math.PI / 4;
+            horizontalAngle = this.mousePosition.x * Math.PI / 4;
         }
 
         horizontalDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), horizontalAngle);
@@ -114,14 +115,15 @@ export class ShootingSystem {
     }
 
     hideTrajectory() { /* ... Bu kısım aynı ... */
-         if (this.trajectoryLine) { scene.remove(this.trajectoryLine); this.trajectoryLine.geometry.dispose(); this.trajectoryLine.material.dispose(); this.trajectoryLine = null; }
+        if (this.trajectoryLine) { scene.remove(this.trajectoryLine); this.trajectoryLine.geometry.dispose(); this.trajectoryLine.material.dispose(); this.trajectoryLine = null; }
     }
 
     showTrajectory(ball) { this.updateTrajectoryLine(ball); }
 
-    updateTrajectoryLine(ball) { /* ... Bu kısım aynı ... */
+    updateTrajectoryLine(ball) { /* ... Arkadaşının iyileştirmesi ile güncellenmiş ... */
         if (!ball.isHeld || !ball.holder) { this.hideTrajectory(); return; }
-        const initialVelocity = this.calculateThrowVelocity(ball);
+        this.gravity = ball.gravity; // Arkadaşının eklediği: dinamik gravity güncellemesi
+        const initialVelocity = this.isAimAssisted ? this.autoAimVelocity : this.calculateThrowVelocity(ball);
         const points = calculateTrajectory(ball.mesh.position, initialVelocity, this.gravity, 70);
         this.hideTrajectory(); if (points.length < 2) return;
         const curve = new THREE.CatmullRomCurve3(points);
@@ -146,39 +148,45 @@ export class ShootingSystem {
 
     releaseCharge(ball) {
         if (!ball.isHeld) return;
-        if (!this.isAimAssisted && this.throwPower <= 0) return;
 
-        console.log("Atış yapılıyor... Güç:", this.throwPower.toFixed(1), "Açı:", THREE.MathUtils.radToDeg(this.verticalAngle).toFixed(1));
-        
+        let velocity;
+        if (this.isAimAssisted) {
+            console.log("Otomatik atış yapılıyor...");
+            velocity = this.autoAimVelocity.clone(); // Arkadaşının iyileştirmesi
+        } else {
+            if (this.throwPower <= 0) return;
+            console.log("Manuel atış yapılıyor... Güç:", this.throwPower.toFixed(1), "Açı:", THREE.MathUtils.radToDeg(this.verticalAngle).toFixed(1));
+            velocity = this.calculateThrowVelocity(ball);
+        }
+
         // Atış animasyonu player.js'de mousedown içinde tetikleniyor.
         // Burada sadece topu fırlatma mantığı kalıyor.
         // Eğer atış animasyonu burada tetiklenecekse, this.player üzerinden çağrılabilirdi:
         // if (this.player && this.player.actions['shoot']) {
         //     this.player.playAnimationOnce('shoot', () => {
-        //         const velocity = this.calculateThrowVelocity(ball);
         //         ball.throw(velocity);
         //     });
         // } else {
-        //     const velocity = this.calculateThrowVelocity(ball);
         //     ball.throw(velocity);
         // }
         // Şimdilik player.js bu mantığı yönetiyor.
 
-        const velocity = this.calculateThrowVelocity(ball);
         ball.throw(velocity);
 
         this.throwPower = 0;
         this.updatePowerBar();
         this.hideTrajectory();
         this.isAimAssisted = false;
+        this.autoAimVelocity.set(0, 0, 0); // Arkadaşının eklediği temizleme
     }
 
-    // --- GÜNCELLENDİ: performAutoShot ---
+    // --- GÜNCELLENDİ: performAutoShot - Arkadaşının fizik hesaplamaları ile iyileştirilmiş ---
     performAutoShot(ball, hoops) {
         if (!ball.isHeld || !hoops || hoops.length === 0) return;
 
-        console.log("X Tuşu: Otomatik Nişan ve Güç Ayarlanıyor...");
+        console.log("X Tuşu: Otomatik Nişan ve Güç Hesaplanıyor...");
         this.hideTrajectory(); // Önceki yörüngeyi temizle
+        this.gravity = ball.gravity; // Arkadaşının eklediği: dinamik gravity güncellemesi
 
         const playerPos = ball.holder.position.clone();
         const playerDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), ball.holder.rotation.y).normalize();
@@ -198,68 +206,66 @@ export class ShootingSystem {
         });
 
         if (targetHoop) {
-            const targetPos = targetHoop.userData.collisionMesh.position;
+            // Arkadaşının iyileştirilmiş fizik hesaplamaları
+            const targetPos = targetHoop.userData.collisionMesh.position.clone();
+            targetPos.y += 0.25; // Arkadaşının eklediği: hedef yükseklik ayarı
+
             const startPos = ball.mesh.position.clone();
+
+            // SORUNUN KAYNAĞI BU SATIRDI. Skorlama koşulunu bozuyordu.
+            // Bu satırı kaldırarak doğrudan çemberin merkezine nişan alıyoruz.
+            // targetPos.y -= 0.15; (Arkadaşının yorumu)
+
             const g = this.gravity;
-            const T_frames = 65; // Uçuş süresi (frame) - Atışın kavisini belirler
-            const dP = targetPos.clone().sub(startPos);
+            const dP_horizontal = new THREE.Vector3(targetPos.x - startPos.x, 0, targetPos.z - startPos.z);
+            const delta_x = dP_horizontal.length();
+            const delta_y = targetPos.y - startPos.y;
 
-            // İdeal dikey hız (Vy) ve yatay hızların toplam büyüklüğü (V_horizontal_magnitude)
-            const idealVy = (dP.y / T_frames) + (g * (T_frames + 1) / 2);
-            // Yataydaki mesafeyi T_frames'de almak için gereken yatay hız büyüklüğü
-            const dP_horizontal = new THREE.Vector3(dP.x, 0, dP.z);
-            const V_horizontal_magnitude = dP_horizontal.length() / T_frames;
+            const theta = Math.PI / 4; // 45 derece sabit açı
+            const cosTheta = Math.cos(theta);
+            const tanTheta = Math.tan(theta);
 
-            // Atış yönünü belirle (yatayda hedefe doğru)
+            const numerator = g * delta_x * delta_x;
+            const denominator = 2 * cosTheta * cosTheta * (delta_x * tanTheta - delta_y);
+
+            if (denominator <= 0) {
+                console.log("Hedef bu açıyla ulaşılamaz.");
+                this.isAimAssisted = false;
+                return;
+            }
+
+            const v0_squared = numerator / denominator;
+            const v0 = Math.sqrt(v0_squared);
+
+            if (isNaN(v0)) {
+                console.log("Hesaplama hatası (v0 = NaN), hedef ulaşılamaz.");
+                this.isAimAssisted = false;
+                return;
+            }
+
             const aimDirectionHorizontal = dP_horizontal.normalize();
+            const horizontal_velocity_component = aimDirectionHorizontal.multiplyScalar(v0 * cosTheta);
+            const idealVelocity = new THREE.Vector3(
+                horizontal_velocity_component.x,
+                v0 * Math.sin(theta),
+                horizontal_velocity_component.z
+            );
 
-            // Yönümüzü (mouse X'i etkileyen) bu ideal yatay yöne göre ayarlamalıyız.
-            // Bu, player'ın Z eksenine göre ne kadar döneceğini bulmak demek.
-            // Player'ın mevcut yönü (0,0,-1) + player.rotation.y
-            // Hedefin yönü aimDirectionHorizontal
-            // Aradaki açıyı bulup mousePosition.x'e yansıtmak yerine, doğrudan
-            // calculateThrowVelocity içinde kullanılacak bir yön ayarlayabiliriz.
-            // ŞİMDİLİK, horizontal açıyı manuel olarak ayarlayalım, sonra bunu hassaslaştırırız.
-            // playerDir'den aimDirectionHorizontal'a olan açıyı bulup mouse'a set etmek yerine,
-            // en iyisi calculateThrowVelocity'nin doğrudan bir hedef yön almasını sağlamak.
-            // Ya da performAutoShot'ta geçici olarak mousePosition.x'i override etmek.
+            this.autoAimVelocity.copy(idealVelocity); // Arkadaşının eklediği: hesaplanan hızı sakla
+            this.isAimAssisted = true; // Nişan yardımı aktif
 
-            // Geçici Çözüm: mousePosition.x'i hedefe göre ayarla
-            // Bu kısım çok doğru değil ama bir başlangıç
-            const worldForward = new THREE.Vector3(0, 0, -1);
-            const playerRotationY = ball.holder.rotation.y;
-            // Oyuncunun kendi "ön" vektörünü al
-            const playerFrontVector = worldForward.clone().applyAxisAngle(new THREE.Vector3(0,1,0), playerRotationY);
-            // Oyuncunun önü ile hedefe olan yatay yön arasındaki açıyı bul
-            let angleToTarget = playerFrontVector.angleTo(aimDirectionHorizontal);
-            // Sağa mı sola mı olduğunu bulmak için cross product
-            const cross = playerFrontVector.clone().cross(aimDirectionHorizontal);
-            if (cross.y < 0) angleToTarget = -angleToTarget; // Eğer sağdaysa negatif açı
-            // Bu açıyı mousePosition.x'e çevir
-            this.mousePosition.x = Math.max(-1, Math.min(1, (angleToTarget / (Math.PI / 4))));
-
-
-            // İdeal dikey açıyı ve gücü bulmak için:
-            // finalPower * sin(verticalAngle) = idealVy
-            // finalPower * cos(verticalAngle) = V_horizontal_magnitude
-            // tan(verticalAngle) = idealVy / V_horizontal_magnitude
-            this.verticalAngle = Math.atan2(idealVy, V_horizontal_magnitude);
-            this.verticalAngle = Math.max(this.minAngle, Math.min(this.maxAngle, this.verticalAngle)); // Sınırla
-
-            // Gücü ayarla
-            // finalPower = sqrt(idealVy^2 + V_horizontal_magnitude^2)
-            const idealTotalSpeed = Math.sqrt(idealVy * idealVy + V_horizontal_magnitude * V_horizontal_magnitude);
+            // Güç çubuğu için görsel güncelleme
+            const finalPower = idealVelocity.length();
             const basePower = 0.35;
             const powerBarFactor = 0.50;
-            // idealTotalSpeed = basePower + (this.throwPower * powerBarFactor)
-            // this.throwPower = (idealTotalSpeed - basePower) / powerBarFactor
-            this.throwPower = (idealTotalSpeed - basePower) / powerBarFactor;
-            this.throwPower = Math.max(0, Math.min(this.maxThrowPower, this.throwPower)); // Sınırla
+            this.throwPower = (finalPower - basePower) / powerBarFactor;
+            this.throwPower = Math.max(0, Math.min(this.maxThrowPower, this.throwPower));
+            this.verticalAngle = theta;
 
-            this.isAimAssisted = true; // Nişan yardımı aktif
+            console.log("Otomatik Nişan Ayarlandı. Güç:", this.throwPower.toFixed(2), "Açı:", THREE.MathUtils.radToDeg(this.verticalAngle).toFixed(1));
             this.updatePowerBar();
             this.updateTrajectoryLine(ball); // Yeni ayarlarla yörüngeyi göster
-            console.log("Otomatik Nişan Ayarlandı. Sol Tıkla Atış Yap.");
+            console.log("Sol Tıkla Atış Yap.");
 
         } else {
             console.log("Uygun bir hedef pota bulunamadı.");
@@ -267,8 +273,11 @@ export class ShootingSystem {
         }
     }
 
-    dispose() { /* ... Bu kısım aynı ... */
-        if (this.powerBarElement && this.powerBarElement.parentNode) { this.powerBarElement.parentNode.removeChild(this.powerBarElement); }
+    dispose() { /* ... Arkadaşının iyileştirmesi ile güncellenmiş ... */
+        if (this.powerBarElement && this.powerBarElement.parentNode) {
+            this.powerBarElement.parentNode.removeChild(this.powerBarElement);
+            this.powerBarElement = null; // Arkadaşının eklediği: null set etme
+        }
         this.hideTrajectory();
     }
 }
