@@ -28,12 +28,12 @@ export class Player {
     }
 
     loadCharacterAndAnimations() {
-        const modelPath = 'models/Idle.fbx'; // Ana modelimiz (Idle animasyonunu da içeriyor)
+        const modelPath = '../models/Idle.fbx'; // Ana modelimiz (Idle animasyonunu da içeriyor)
         const animPaths = {
-            run: 'models/running.fbx',          // Koşma (Run With Sword.fbx'ten)
-            jump_up: 'models/jumping_up.fbx',    // Zıplama başlangıcı
-            jump_down: 'models/jumping_down.fbx',// İniş
-            shoot: 'models/shooting.fbx'       // Atış (Throw In.fbx'ten)
+            run: '../models/running.fbx',          // Koşma (Run With Sword.fbx'ten)
+            jump_up: '../models/jumping_up.fbx',    // Zıplama başlangıcı
+            jump_down: '../models/jumping_down.fbx',// İniş
+            shoot: '../models/shooting.fbx'       // Atış (Throw In.fbx'ten)
         };
 
         fbx_loader.load(modelPath, (loadedFbx) => {

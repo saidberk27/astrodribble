@@ -1,7 +1,9 @@
-import { createScene, createRenderer, handleWindowResize, scene as globalScene, showLoadingScreen, loadingManager } from './core/scene.js';
+import { createScene, createRenderer, handleWindowResize, scene as globalScene } from './core/scene.js';
+import { showLoadingScreen, loadingManager } from './core/loading.js';
 import { createCamera, enableCameraMotions, updateCameraPosition } from './core/camera.js';
 import { createLights, createCourt, createHoops } from './core/world.js';
 import { createPlayer, setupPlayerControls } from './core/player.js';
+import { createAlien } from './core/alien.js';
 import { Ball } from './core/ball.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
@@ -12,9 +14,11 @@ export const gltf_loader = new GLTFLoader();
 export const fbx_loader = new FBXLoader(); // <-- YENİ LOADER
 let updatePlayerMovement; // setupPlayerControls'dan dönen fonksiyonu saklar
 let ball;
+let alien; // Add alien variable
 export let hoops = [];
 let score = 0;
 let scoreElement;
+let isGameOver = false; // Add game over state
 
 export let currentLevel = 1; // Başlangıç seviyesi
 export const levelSettings = {
@@ -178,6 +182,42 @@ export async function changeLevel(levelId) {
     }
 }
 
+function handleGameOver(event) {
+    if (isGameOver) return;
+    isGameOver = true;
+
+    // Create game over screen
+    const gameOverScreen = document.createElement('div');
+    gameOverScreen.style.position = 'fixed';
+    gameOverScreen.style.top = '50%';
+    gameOverScreen.style.left = '50%';
+    gameOverScreen.style.transform = 'translate(-50%, -50%)';
+    gameOverScreen.style.background = 'rgba(0, 0, 0, 0.8)';
+    gameOverScreen.style.color = 'white';
+    gameOverScreen.style.padding = '20px';
+    gameOverScreen.style.borderRadius = '10px';
+    gameOverScreen.style.textAlign = 'center';
+    gameOverScreen.style.zIndex = '1000';
+
+    gameOverScreen.innerHTML = `
+        <h1>Game Over</h1>
+        <p>${event.detail.reason}</p>
+        <p>Final Score: ${score}</p>
+        <button id="restartButton" style="padding: 10px 20px; margin-top: 10px; cursor: pointer;">
+            Restart Level
+        </button>
+    `;
+
+    document.body.appendChild(gameOverScreen);
+
+    // Add restart button handler
+    document.getElementById('restartButton').addEventListener('click', () => {
+        document.body.removeChild(gameOverScreen);
+        isGameOver = false;
+        resetAndInitLevel();
+    });
+}
+
 async function init() {
     showLoadingScreen(true, 'Initializing game...');
     var settings = levelSettings[currentLevel];
@@ -205,8 +245,12 @@ async function init() {
     scoreElement = document.getElementById('score');
     updateScoreDisplay();
 
+    // Initialize loading managers for loaders
+    gltf_loader.manager = loadingManager;
+    fbx_loader.manager = loadingManager;
+
     const player = createPlayer();
-    // player.js içindeki loadModel, modeli globalScene'e ekliyor.
+    alien = createAlien(player); // Create alien after player
 
     ball = new Ball(settings.gravity);
     globalScene.add(ball.mesh);
@@ -244,6 +288,9 @@ async function init() {
         }
     });
 
+    // Add game over event listener
+    window.addEventListener('gameOver', handleGameOver);
+
     if (!animationFrameId) {
         console.log("Animasyon döngüsü başlatılıyor.");
         animate(renderer, globalScene, camera);
@@ -252,13 +299,20 @@ async function init() {
 
 function animate(renderer, sceneRef, cameraRef) {
     animationFrameId = requestAnimationFrame(() => animate(renderer, sceneRef, cameraRef));
-    if (updatePlayerMovement) {
-        updatePlayerMovement();
+
+    if (!isGameOver) {
+        if (updatePlayerMovement) {
+            updatePlayerMovement();
+        }
+        if (ball) {
+            ball.update();
+            ball.checkHoopCollision(hoops, incrementScore);
+        }
+        if (alien) {
+            alien.update();
+        }
     }
-    if (ball) {
-        ball.update();
-        ball.checkHoopCollision(hoops, incrementScore);
-    }
+
     updateCameraPosition();
     renderer.render(sceneRef, cameraRef);
 }
