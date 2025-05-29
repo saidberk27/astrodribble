@@ -4,6 +4,11 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { world, createBallPhysics } from './physics.js';
 
+export const courtWidth = 15.24; // Sahanın genişliği // Orijinal saha genişliği
+export const courtLength = 28.65; // Orijinal saha uzunluğu
+export const maxHeight = 15.0;   // Tavan yüksekliği
+export const elasticity = 0.7;
+
 export class Ball {
 
     constructor(gravityValue = 0.015) { // Varsayılan değer Dünya yerçekimi, game.js'den ayarlanacak
@@ -57,12 +62,7 @@ export class Ball {
             // Top havadaysa (fizik simülasyonu)
             this.velocity.y -= this.gravity; // Yerçekimi uygula
             this.mesh.position.add(this.velocity); // Hıza göre pozisyonu güncelle
-
-            // --- SINIR KONTROLLERİ (Saha Dışı ve Zemin/Tavan) ---
-            const courtWidth = 15.24; // Orijinal saha genişliği
-            const courtLength = 28.65; // Orijinal saha uzunluğu
-            const maxHeight = 15.0;   // Tavan yüksekliği
-            const elasticity = 0.7;   // Duvarların ve tavanın sekme katsayısı
+            // Duvarların ve tavanın sekme katsayısı
 
             const minX = -courtWidth / 2 + this.radius;
             const maxX = courtWidth / 2 - this.radius;
@@ -96,8 +96,8 @@ export class Ball {
                 this.velocity.z *= 0.8;
 
                 if (this.velocity.length() < 0.05) { // Neredeyse durduysa
-                   this.isMoving = false;
-                   this.velocity.set(0, 0, 0);
+                    this.isMoving = false;
+                    this.velocity.set(0, 0, 0);
                 }
             }
             // Y Ekseni Sınırları (Tavan)
@@ -120,7 +120,7 @@ export class Ball {
             this.velocity.copy(direction);
             // Atıştan hemen sonra skor kontrolünü aktifleştir
             this.hasScored = false;
-            if(this.scoreTimeout) clearTimeout(this.scoreTimeout);
+            if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
 
         }
     }
@@ -157,8 +157,7 @@ export class Ball {
                     this.previousPosition.y > hoopY &&
                     this.mesh.position.y <= hoopY &&
                     Math.abs(this.mesh.position.x - hoopCollisionMesh.position.x) < hoopRadius &&
-                    Math.abs(this.mesh.position.z - hoopCollisionMesh.position.z) < hoopRadius)
-                {
+                    Math.abs(this.mesh.position.z - hoopCollisionMesh.position.z) < hoopRadius) {
                     this.hasScored = true;
 
                     if (onScoreCallback) {

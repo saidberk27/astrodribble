@@ -2,6 +2,7 @@ import * as THREE from 'three';
 // GLTFLoader'ı buradan kaldırıyoruz, game.js'den gelecek.
 import { scene } from './scene.js';
 import { world, createHoopPhysics, createGroundPhysics, initPhysics } from './physics.js';
+import { courtWidth, courtLength } from './ball.js';
 
 // Fizik motorunu başlat
 initPhysics();
@@ -40,8 +41,8 @@ export function createCourt(texturePath = 'textures/court_texture.jpg') { // tex
     scene.add(court); // scene'i global olarak (scene.js'den import ederek) kullandığınızı varsayıyorum
 }
 
-    // Saha için fizik gövdesi oluştur
-    createGroundPhysics(courtWidth, courtLength);
+// Saha için fizik gövdesi oluştur
+createGroundPhysics(courtWidth, courtLength);
 
 
 // createHoops fonksiyonunu güncelliyoruz
@@ -58,7 +59,7 @@ export function createHoops(hoopsArray, gltf_loader) { // hoopsArray ve gltf_loa
     const hoop2_Z_offset = 0.6; // Örneğin, -0.1 veya +0.1 gibi değerler deneyin
     // ------------------------------------
 
- gltf_loader.load(
+    gltf_loader.load(
         'models/basketball_hoop2.glb',
         function (gltf) {
             // --- Birinci Pota ---

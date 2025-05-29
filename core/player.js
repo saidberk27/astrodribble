@@ -1,12 +1,11 @@
-// core/player.js
-
 import * as THREE from 'three';
 
 import { ShootingSystem } from './shoot.js';
 import { fbx_loader, levelSettings, currentLevel } from '../game.js';
 import { scene } from './scene.js';
 
-export class Player {
+
+export class createPlayer {
     constructor() {
         this.mesh = new THREE.Object3D();
         this.mesh.position.set(0, 0, 0);
@@ -25,6 +24,7 @@ export class Player {
         this.actions = {};
         this.activeActionName = null;
         this.isAnimatingAction = false; // Tek seferlik animasyon oynuyor mu?
+        this.isMovingHorizontally = false; // Oyuncunun yatay hareket durumunu takip eder
 
         this.loadCharacterAndAnimations();
     }
@@ -32,10 +32,10 @@ export class Player {
     loadCharacterAndAnimations() {
         const modelPath = 'models/Idle.fbx'; // Ana modelimiz (Idle animasyonunu da içeriyor)
         const animPaths = {
-            run: 'models/running.fbx',          // Koşma (Run With Sword.fbx'ten)
-            jump_up: 'models/jumping_up.fbx',    // Zıplama başlangıcı
+            run: 'models/running.fbx',      // Koşma (Run With Sword.fbx'ten)
+            jump_up: 'models/jumping_up.fbx',  // Zıplama başlangıcı
             jump_down: 'models/jumping_down.fbx',// İniş
-            shoot: 'models/shooting.fbx'       // Atış (Throw In.fbx'ten)
+            shoot: 'models/shooting.fbx'     // Atış (Throw In.fbx'ten)
         };
 
         fbx_loader.load(modelPath, (loadedFbx) => {
@@ -98,12 +98,7 @@ export class Player {
 
         if (previousAction && previousAction !== newAction) {
             previousAction.fadeOut(crossFadeDuration);
-
         }
-    };
-    return playerObject;
-}
-
 
         newAction
             .reset()
@@ -128,10 +123,7 @@ export class Player {
         // Önceki animasyonu yavaşça sonlandır
         if (this.actions[previousActionName] && this.actions[previousActionName] !== actionToPlay) {
             this.actions[previousActionName].fadeOut(crossFadeDuration);
-
         }
-    };
-
 
         // Yeni animasyonu başlat
         actionToPlay
@@ -143,7 +135,6 @@ export class Player {
             .play();
         this.activeActionName = name; // Aktif animasyonu güncelle
 
-
         const listener = (event) => {
             if (event.action === actionToPlay) {
                 this.mixer.removeEventListener('finished', listener);
@@ -151,8 +142,10 @@ export class Player {
 
                 // Biten animasyon 'shoot' veya 'jump_down' değilse idle'a dön
                 // 'shoot' ve 'jump_down' bittikten sonraki durumları kendi özel mantıklarında ele almalılar
+                // (örn. jump_down için move() içinde, shoot için özel bir durum olabilir)
                 if (name !== 'shoot' && name !== 'jump_down') {
-                     this.playAnimation(isMovingHorizontal ? 'run' : 'idle'); // Yere inince veya zıplama bitince duruma göre
+                    // O anki hareket durumuna göre animasyona dön
+                    this.playAnimation(this.isMovingHorizontally ? 'run' : 'idle');
                 }
 
                 if (onFinishedCallback) {
@@ -163,7 +156,6 @@ export class Player {
         this.mixer.addEventListener('finished', listener);
     }
 
-
     jump() {
         if (this.onGround && !this.isAnimatingAction) {
             this.velocityY = this.jumpForce;
@@ -172,8 +164,7 @@ export class Player {
             this.playAnimationOnce('jump_up', () => {
                 // jump_up bittikten sonra, eğer hala havadaysak bir "falling" animasyonuna geçebiliriz.
                 // Şimdilik, yere inme kontrolü move() içinde jump_down'ı tetikleyecek.
-                // Veya jump_up bitince direkt idle/run'a dönebilir eğer falling animasyonumuz yoksa.
-                // Şu anki playAnimationOnce mantığı, jump_up bitince koşuyor/duruyor durumuna göre animasyona dönecek.
+                // playAnimationOnce içindeki listener, jump_up bitince this.isMovingHorizontally durumuna göre animasyona dönecek.
             });
         }
     }
@@ -181,10 +172,10 @@ export class Player {
     move(keysPressed) {
         this.playerGravity = levelSettings[currentLevel] ? levelSettings[currentLevel].gravity * 0.8 : 0.015 * 0.8;
         const moveVector = new THREE.Vector3(0, 0, 0);
-        let isMovingHorizontal = false;
+        this.isMovingHorizontally = false; // Her move çağrısında yatay hareketi sıfırla
 
-        if (keysPressed['w'] || keysPressed['arrowup']) { moveVector.z = -this.speed; isMovingHorizontal = true; }
-        if (keysPressed['s'] || keysPressed['arrowdown']) { moveVector.z = this.speed; isMovingHorizontal = true; }
+        if (keysPressed['w'] || keysPressed['arrowup']) { moveVector.z = -this.speed; this.isMovingHorizontally = true; }
+        if (keysPressed['s'] || keysPressed['arrowdown']) { moveVector.z = this.speed; this.isMovingHorizontally = true; }
         if (keysPressed['a'] || keysPressed['arrowleft']) { this.mesh.rotation.y += this.rotationSpeed; }
         if (keysPressed['d'] || keysPressed['arrowright']) { this.mesh.rotation.y -= this.rotationSpeed; }
 
@@ -199,8 +190,8 @@ export class Player {
             this.velocityY = 0;
             if (this.isJumping) { // Eğer zıplama durumundan geliyorsa
                 this.playAnimationOnce('jump_down', () => {
-                    // İniş animasyonu bittikten sonra idle veya run'a geç
-                    this.playAnimation(isMovingHorizontal ? 'run' : 'idle');
+                    // İniş animasyonu bittikten sonra o anki hareket durumuna göre idle veya run'a geç
+                    this.playAnimation(this.isMovingHorizontally ? 'run' : 'idle');
                 });
             }
             this.isJumping = false;
@@ -209,7 +200,7 @@ export class Player {
 
         // Animasyon Durumunu Ayarla (Tek seferlik bir animasyon oynamıyorsa)
         if (!this.isAnimatingAction && this.onGround) {
-            if (isMovingHorizontal) {
+            if (this.isMovingHorizontally) {
                 this.playAnimation('run');
             } else {
                 this.playAnimation('idle');
@@ -236,12 +227,11 @@ export class Player {
     getRotation() { return this.mesh.rotation.y; }
 }
 
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-
+// Kaldırılan global listener'lar:
+// window.addEventListener('keydown', onKeyDown);
+// window.addEventListener('keyup', onKeyUp);
+// window.addEventListener('mousedown', onMouseDown);
+// window.addEventListener('mouseup', onMouseUp);
 
 export function setupPlayerControls(player, ball, hoops) {
     const keysPressed = {};
@@ -278,22 +268,22 @@ export function setupPlayerControls(player, ball, hoops) {
     });
 
     window.addEventListener('mousedown', (event) => {
-    if (event.button === 0 && ball.isHeld && !player.isAnimatingAction) { // Sol Tıklama
-        player.playAnimationOnce('shoot'); // Sadece animasyonu başlat, callback yok
+        if (event.button === 0 && ball.isHeld && !player.isAnimatingAction) { // Sol Tıklama
+            player.playAnimationOnce('shoot'); // Sadece animasyonu başlat, callback yok
 
-        // Atış animasyonunun yaklaşık ne kadar sürede topu "bıraktığını" tahmin etmemiz lazım.
-        // Örneğin, animasyon 0.5 saniyede topu bırakıyorsa:
-        const releaseTime = 500; // milisaniye (0.5 saniye) - BU DEĞERİ ANİMASYONUNUZA GÖRE AYARLAYIN!
+            // Atış animasyonunun yaklaşık ne kadar sürede topu "bıraktığını" tahmin etmemiz lazım.
+            // Örneğin, animasyon 0.5 saniyede topu bırakıyorsa:
+            const releaseTime = 500; // milisaniye (0.5 saniye) - BU DEĞERİ ANİMASYONUNUZA GÖRE AYARLAYIN!
 
-        setTimeout(() => {
-            // Eğer hala top tutuluyorsa ve otomatik nişan aktif değilse fırlat
-            // (Oyuncu bu süre içinde topu bırakmış veya X'e basmış olabilir)
-            if (ball.isHeld && !shootingSystem.isAimAssisted) {
-                 shootingSystem.releaseCharge(ball);
-            }
-        }, releaseTime);
-    }
-});
+            setTimeout(() => {
+                // Eğer hala top tutuluyorsa ve otomatik nişan aktif değilse fırlat
+                // (Oyuncu bu süre içinde topu bırakmış veya X'e basmış olabilir)
+                if (ball.isHeld && !shootingSystem.isAimAssisted) {
+                    shootingSystem.releaseCharge(ball);
+                }
+            }, releaseTime);
+        }
+    });
 
     window.addEventListener('beforeunload', () => {
         shootingSystem.dispose();
@@ -309,7 +299,6 @@ export function setupPlayerControls(player, ball, hoops) {
             shootingSystem.update(ball);
         } else {
             shootingSystem.hideTrajectory();
-
         }
     };
 }
