@@ -1,4 +1,4 @@
-import { createScene, createRenderer, handleWindowResize, scene as globalScene } from './core/scene.js';
+import { createScene, createRenderer, handleWindowResize, scene as globalScene, showLoadingScreen, loadingManager } from './core/scene.js';
 import { createCamera, enableCameraMotions, updateCameraPosition } from './core/camera.js';
 import { createLights, createCourt, createHoops } from './core/world.js';
 import { createPlayer, setupPlayerControls } from './core/player.js';
@@ -51,26 +51,26 @@ export const levelSettings = {
 const rgbeLoader = new RGBELoader(); // RGBELoader'ı bir kere oluştur
 
 function setEnvironment(settings) {
-    if (settings.hdriPath) {
-        rgbeLoader.load(settings.hdriPath, function (texture) {
-            texture.mapping = THREE.EquirectangularReflectionMapping;
-            globalScene.background = texture;
-            globalScene.environment = texture;
-            console.log(settings.name + " için HDRI yüklendi ve ayarlandı.");
-        }, undefined, (err) => {
-            console.error("HDRI yüklenirken hata: " + settings.hdriPath + ". Yedek renk kullanılıyor.", err);
+    return new Promise((resolve, reject) => {
+        if (settings.hdriPath) {
+            rgbeLoader.load(settings.hdriPath, function (texture) {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                globalScene.background = texture;
+                globalScene.environment = texture;
+                console.log(settings.name + " için HDRI yüklendi ve ayarlandı.");
+                resolve();
+            }, undefined, (err) => {
+                console.error("HDRI yüklenirken hata: " + settings.hdriPath + ". Yedek renk kullanılıyor.", err);
+                globalScene.background = new THREE.Color(settings.skyColor || 0x333333);
+                globalScene.environment = null;
+                resolve();
+            });
+        } else {
             globalScene.background = new THREE.Color(settings.skyColor || 0x333333);
             globalScene.environment = null;
-        });
-    } else if (settings.skyColor) {
-        globalScene.background = new THREE.Color(settings.skyColor);
-        globalScene.environment = null;
-        console.warn(settings.name + " için hdriPath tanımlanmamış, düz renk kullanılıyor.");
-    } else { // Ne HDRI ne de skyColor tanımlıysa varsayılan bir renk
-        globalScene.background = new THREE.Color(0x333333);
-        globalScene.environment = null;
-        console.warn(settings.name + " için ne hdriPath ne de skyColor tanımlı. Varsayılan arka plan kullanılıyor.");
-    }
+            resolve();
+        }
+    });
 }
 
 function updateScoreDisplay() {
@@ -131,7 +131,7 @@ function cleanupScene() {
     // ball ve player init içinde yeniden oluşturulacak
 }
 
-function resetAndInitLevel() {
+async function resetAndInitLevel() {
     console.log("resetAndInitLevel çağrıldı.");
 
     if (animationFrameId) {
@@ -162,14 +162,15 @@ function resetAndInitLevel() {
     // renderer = null; // Yeniden kullanılacağı için null yapmayalım
 
     console.log("Sahne temizlendi, yeni seviye için init() çağrılıyor.");
-    init();
+    await init();
 }
 
-export function changeLevel(levelId) {
+export async function changeLevel(levelId) {
     if (levelSettings[levelId] && currentLevel !== levelId) {
+        showLoadingScreen(true, `Loading ${levelSettings[levelId].name}...`);
         console.log((levelSettings[currentLevel]?.name || "Bilinmeyen Gezegen") + " gezegeninden " + (levelSettings[levelId]?.name || "Bilinmeyen Gezegen") + " gezegenine geçiliyor...");
         currentLevel = levelId;
-        resetAndInitLevel();
+        await resetAndInitLevel();
     } else if (currentLevel === levelId) {
         console.log((levelSettings[currentLevel]?.name || "Bilinmeyen Gezegen") + " gezegenindesiniz zaten.");
     } else {
@@ -177,17 +178,18 @@ export function changeLevel(levelId) {
     }
 }
 
-function init() {
+async function init() {
+    showLoadingScreen(true, 'Initializing game...');
     var settings = levelSettings[currentLevel];
     if (!settings) {
         console.error("Geçerli seviye ayarları bulunamadı! Seviye ID:", currentLevel);
-        currentLevel = 1; // Varsayılana dön
+        currentLevel = 1;
         settings = levelSettings[currentLevel];
     }
     console.log(settings.name + " gezegeni yükleniyor... Yerçekimi:", settings.gravity);
 
-    createScene(); // globalScene'i oluşturur/ayarlar
-    setEnvironment(settings); // HDRI veya arka plan rengini ayarlar
+    createScene();
+    await setEnvironment(settings);
 
     const camera = createCamera(); // camera.js'deki global kamerayı kullanır
 
@@ -219,6 +221,10 @@ function init() {
     handleWindowResize(camera); // Bu da event listener ekler, idealde temizlenmeli
     createLights(); // Bu ışıklar HDRI ile birlikte çalışacak
     createCourt(settings.courtTexture);
+
+    // Initialize loading managers for loaders
+    gltf_loader.manager = loadingManager;
+    fbx_loader.manager = loadingManager;
 
     const buttonConfigs = [
         { id: 'goToWorldButton', level: 1 },

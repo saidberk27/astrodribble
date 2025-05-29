@@ -3,14 +3,14 @@ import * as THREE from 'three';
 import { scene } from './scene.js';
 
 export function createLights() {
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1); // Reduced intensity from 2 to 1
     directionalLight.position.set(0, 20, 0);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     scene.add(directionalLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // Reduced intensity from 0.6 to 0.4
     scene.add(ambientLight);
 }
 
@@ -47,7 +47,7 @@ export function createHoops(hoopsArray, gltf_loader) { // hoopsArray ve gltf_loa
     const hoop2_Z_offset = 0.6; // Örneğin, -0.1 veya +0.1 gibi değerler deneyin
     // ------------------------------------
 
- gltf_loader.load(
+    gltf_loader.load(
         'models/basketball_hoop2.glb',
         function (gltf) {
             // --- Birinci Pota ---
