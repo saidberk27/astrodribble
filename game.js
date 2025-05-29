@@ -178,7 +178,7 @@ export function changeLevel(levelId) {
 }
 
 function init() {
-    settings = levelSettings[currentLevel];
+    var settings = levelSettings[currentLevel];
     if (!settings) {
         console.error("Geçerli seviye ayarları bulunamadı! Seviye ID:", currentLevel);
         currentLevel = 1; // Varsayılana dön
