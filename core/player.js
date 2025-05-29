@@ -17,6 +17,7 @@ export class Player {
         this.jumpForce = 0.25;
         this.playerGravity = levelSettings[currentLevel] ? levelSettings[currentLevel].gravity * 0.8 : 0.015 * 0.8;
         this.modelObject = null;
+        this.isMovingHorizontal = false;  // Add this property
 
         this.mixer = null;
         this.actions = {};
@@ -141,7 +142,7 @@ export class Player {
                 // Biten animasyon 'shoot' veya 'jump_down' değilse idle'a dön
                 // 'shoot' ve 'jump_down' bittikten sonraki durumları kendi özel mantıklarında ele almalılar
                 if (name !== 'shoot' && name !== 'jump_down') {
-                     this.playAnimation(isMovingHorizontal ? 'run' : 'idle'); // Yere inince veya zıplama bitince duruma göre
+                    this.playAnimation(this.isMovingHorizontal ? 'run' : 'idle'); // Use this.isMovingHorizontal
                 }
 
                 if (onFinishedCallback) {
@@ -170,10 +171,10 @@ export class Player {
     move(keysPressed) {
         this.playerGravity = levelSettings[currentLevel] ? levelSettings[currentLevel].gravity * 0.8 : 0.015 * 0.8;
         const moveVector = new THREE.Vector3(0, 0, 0);
-        let isMovingHorizontal = false;
+        this.isMovingHorizontal = false;  // Reset at start of move
 
-        if (keysPressed['w'] || keysPressed['arrowup']) { moveVector.z = -this.speed; isMovingHorizontal = true; }
-        if (keysPressed['s'] || keysPressed['arrowdown']) { moveVector.z = this.speed; isMovingHorizontal = true; }
+        if (keysPressed['w'] || keysPressed['arrowup']) { moveVector.z = -this.speed; this.isMovingHorizontal = true; }
+        if (keysPressed['s'] || keysPressed['arrowdown']) { moveVector.z = this.speed; this.isMovingHorizontal = true; }
         if (keysPressed['a'] || keysPressed['arrowleft']) { this.mesh.rotation.y += this.rotationSpeed; }
         if (keysPressed['d'] || keysPressed['arrowright']) { this.mesh.rotation.y -= this.rotationSpeed; }
 
@@ -189,7 +190,7 @@ export class Player {
             if (this.isJumping) { // Eğer zıplama durumundan geliyorsa
                 this.playAnimationOnce('jump_down', () => {
                     // İniş animasyonu bittikten sonra idle veya run'a geç
-                    this.playAnimation(isMovingHorizontal ? 'run' : 'idle');
+                    this.playAnimation(this.isMovingHorizontal ? 'run' : 'idle');
                 });
             }
             this.isJumping = false;
@@ -198,7 +199,7 @@ export class Player {
 
         // Animasyon Durumunu Ayarla (Tek seferlik bir animasyon oynamıyorsa)
         if (!this.isAnimatingAction && this.onGround) {
-            if (isMovingHorizontal) {
+            if (this.isMovingHorizontal) {
                 this.playAnimation('run');
             } else {
                 this.playAnimation('idle');
@@ -264,22 +265,22 @@ export function setupPlayerControls(player, ball, hoops) {
     });
 
     window.addEventListener('mousedown', (event) => {
-    if (event.button === 0 && ball.isHeld && !player.isAnimatingAction) { // Sol Tıklama
-        player.playAnimationOnce('shoot'); // Sadece animasyonu başlat, callback yok
+        if (event.button === 0 && ball.isHeld && !player.isAnimatingAction) { // Sol Tıklama
+            player.playAnimationOnce('shoot'); // Sadece animasyonu başlat, callback yok
 
-        // Atış animasyonunun yaklaşık ne kadar sürede topu "bıraktığını" tahmin etmemiz lazım.
-        // Örneğin, animasyon 0.5 saniyede topu bırakıyorsa:
-        const releaseTime = 500; // milisaniye (0.5 saniye) - BU DEĞERİ ANİMASYONUNUZA GÖRE AYARLAYIN!
+            // Atış animasyonunun yaklaşık ne kadar sürede topu "bıraktığını" tahmin etmemiz lazım.
+            // Örneğin, animasyon 0.5 saniyede topu bırakıyorsa:
+            const releaseTime = 500; // milisaniye (0.5 saniye) - BU DEĞERİ ANİMASYONUNUZA GÖRE AYARLAYIN!
 
-        setTimeout(() => {
-            // Eğer hala top tutuluyorsa ve otomatik nişan aktif değilse fırlat
-            // (Oyuncu bu süre içinde topu bırakmış veya X'e basmış olabilir)
-            if (ball.isHeld && !shootingSystem.isAimAssisted) {
-                 shootingSystem.releaseCharge(ball);
-            }
-        }, releaseTime);
-    }
-});
+            setTimeout(() => {
+                // Eğer hala top tutuluyorsa ve otomatik nişan aktif değilse fırlat
+                // (Oyuncu bu süre içinde topu bırakmış veya X'e basmış olabilir)
+                if (ball.isHeld && !shootingSystem.isAimAssisted) {
+                    shootingSystem.releaseCharge(ball);
+                }
+            }, releaseTime);
+        }
+    });
 
     window.addEventListener('beforeunload', () => {
         shootingSystem.dispose();
