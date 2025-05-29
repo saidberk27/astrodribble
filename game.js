@@ -116,12 +116,12 @@ function cleanupScene() {
         if (child.type !== "PerspectiveCamera" &&
             child.type !== "DirectionalLight" &&
             child.type !== "AmbientLight") {
-            if(child.geometry) child.geometry.dispose();
-            if(child.material) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
                 if (Array.isArray(child.material)) {
-                    child.material.forEach(material => { if(material.dispose) material.dispose(); });
+                    child.material.forEach(material => { if (material.dispose) material.dispose(); });
                 } else {
-                    if(child.material.dispose) child.material.dispose();
+                    if (child.material.dispose) child.material.dispose();
                 }
             }
             globalScene.remove(child);
@@ -178,7 +178,7 @@ export function changeLevel(levelId) {
 }
 
 function init() {
-    const settings = levelSettings[currentLevel];
+    settings = levelSettings[currentLevel];
     if (!settings) {
         console.error("Geçerli seviye ayarları bulunamadı! Seviye ID:", currentLevel);
         currentLevel = 1; // Varsayılana dön
@@ -239,8 +239,8 @@ function init() {
     });
 
     if (!animationFrameId) {
-         console.log("Animasyon döngüsü başlatılıyor.");
-         animate(renderer, globalScene, camera);
+        console.log("Animasyon döngüsü başlatılıyor.");
+        animate(renderer, globalScene, camera);
     }
 }
 
