@@ -3,15 +3,51 @@ import * as THREE from 'three';
 import { scene } from './scene.js';
 
 export function createLights() {
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1); // Reduced intensity from 2 to 1
-    directionalLight.position.set(0, 20, 0);
+    // Güneş için parlak materyal oluştur
+    const sunGeometry = new THREE.SphereGeometry(1, 32, 32);
+    const sunMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+    });
+    const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+    sun.position.set(20, 20, 20); // Güneşin pozisyonu
+    scene.add(sun);
+
+    // Directional light'ı güneşin pozisyonuna göre ayarla
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.copy(sun.position);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     scene.add(directionalLight);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // Reduced intensity from 0.6 to 0.4
+    // Ambient light'ı daha düşük yoğunlukta tut
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
+
+    // Güneşin etrafında bir parıltı efekti
+    const spriteMaterial = new THREE.SpriteMaterial({
+        map: new THREE.TextureLoader().load('textures/glow.png'),
+        color: 0xffff00,
+        transparent: true,
+        blending: THREE.AdditiveBlending
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(4, 4, 1);
+    sun.add(sprite);
+
+    // Güneşi hareket ettirmek için bir animasyon fonksiyonu
+    function animateSun() {
+        const time = Date.now() * 0.001;
+        const radius = 30;
+        sun.position.x = Math.cos(time * 0.3) * radius;
+        sun.position.z = Math.sin(time * 0.3) * radius;
+        sun.position.y = 20 + Math.sin(time * 0.5) * 5;
+        directionalLight.position.copy(sun.position);
+        requestAnimationFrame(animateSun);
+    }
+    animateSun();
 }
 
 export function createCourt(texturePath = 'textures/court_texture.jpg') { // texturePath parametresi eklendi

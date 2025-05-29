@@ -23,36 +23,79 @@ let scoreElement;
 let isGameOver = false; // Add game over state
 
 export let currentLevel = 1; // Başlangıç seviyesi
+let currentMusic = null; // Şu an çalan müzik
+
 export const levelSettings = {
     1: {
         name: "Dünya",
         gravity: 0.015,
         courtTexture: 'textures/court_texture.jpg',
-        hdriPath: 'textures/hdri/PlanetaryEarth4k.hdr', // Dünya için HDRI yolu
-        skyColor: 0x87CEEB // HDRI yüklenemezse kullanılacak yedek renk
+        hdriPath: 'textures/hdri/PlanetaryEarth4k.hdr',
+        skyColor: 0x87CEEB,
+        music: 'musics/main.mp3'
     },
     2: {
         name: "Mars",
         gravity: 0.0057,
         courtTexture: 'textures/court_texture_mars.jpg',
-        hdriPath: 'textures/hdri/mars_sky.hdr', // Mars için HDRI yolu
-        skyColor: 0xFF7F50
+        hdriPath: 'textures/hdri/mars_sky.hdr',
+        skyColor: 0xFF7F50,
+        music: 'musics/mars.mp3'
     },
     3: {
         name: "Europa Uydusu",
         gravity: 0.01125,
         courtTexture: 'textures/court_texture_europa.jpg',
-        hdriPath: 'textures/hdri/europa_sky.hdr', // Europa için HDRI yolu
-        skyColor: 0xADD8E6
+        hdriPath: 'textures/hdri/europa_sky.hdr',
+        skyColor: 0xADD8E6,
+        music: 'musics/europa.mp3'
     },
     4: {
         name: "Kara Delik Gezegeni",
         gravity: 0.0225,
         courtTexture: 'textures/court_texture_blackhole.jpg',
-        hdriPath: 'textures/hdri/blackhole_sky.hdr', // Kara Delik G. için HDRI yolu
-        skyColor: 0x101020
+        hdriPath: 'textures/hdri/blackhole_sky.hdr',
+        skyColor: 0x101020,
+        music: 'musics/black_hole.mp3'
     }
 };
+
+// Müzik yönetimi için fonksiyonlar
+function playMusic(musicPath) {
+    if (currentMusic) {
+        currentMusic.pause();
+        currentMusic = null;
+    }
+
+    const audio = new Audio(musicPath);
+    audio.loop = true; // Müziği sürekli çal
+    audio.volume = 0.5; // Ses seviyesini yarıya indir
+
+    // Tarayıcının otomatik çalma politikası için kullanıcı etkileşimi gerekiyor
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.log('Müzik otomatik başlatılamadı, kullanıcı etkileşimi bekleniyor...');
+            // Kullanıcı etkileşimi için tek seferlik bir event listener ekle
+            const startAudio = () => {
+                audio.play().then(() => {
+                    document.removeEventListener('click', startAudio);
+                    document.removeEventListener('keydown', startAudio);
+                }).catch(e => console.warn('Müzik çalınırken hata:', e));
+            };
+            document.addEventListener('click', startAudio);
+            document.addEventListener('keydown', startAudio);
+        });
+    }
+    currentMusic = audio;
+}
+
+function stopMusic() {
+    if (currentMusic) {
+        currentMusic.pause();
+        currentMusic = null;
+    }
+}
 
 const rgbeLoader = new RGBELoader(); // RGBELoader'ı bir kere oluştur
 const clock = new THREE.Clock(); // Arkadaşının eklediği deltaTime için
@@ -97,6 +140,9 @@ let animationFrameId = null;
 
 function cleanupScene() {
     console.log("Sahne temizleniyor...");
+
+    // Müziği durdur
+    stopMusic();
 
     // DOM'dan güç barını kaldır
     const powerBar = document.querySelector('div[style*="fixed"][style*="20px"][style*="200px"]');
@@ -191,6 +237,12 @@ export async function changeLevel(levelId) {
         showLoadingScreen(true, `Loading ${levelSettings[levelId].name}...`);
         console.log((levelSettings[currentLevel]?.name || "Bilinmeyen Gezegen") + " gezegeninden " + (levelSettings[levelId]?.name || "Bilinmeyen Gezegen") + " gezegenine geçiliyor...");
         currentLevel = levelId;
+
+        // Yeni müziği çal
+        if (levelSettings[levelId].music) {
+            playMusic(levelSettings[levelId].music);
+        }
+
         await resetAndInitLevel();
     } else if (currentLevel === levelId) {
         console.log((levelSettings[currentLevel]?.name || "Bilinmeyen Gezegen") + " gezegenindesiniz zaten.");
@@ -217,13 +269,99 @@ function handleGameOver(event) {
     gameOverScreen.style.zIndex = '1000';
 
     gameOverScreen.innerHTML = `
-        <h1>Game Over</h1>
-        <p>${event.detail.reason}</p>
-        <p>Final Score: ${score}</p>
-        <button id="restartButton" style="padding: 10px 20px; margin-top: 10px; cursor: pointer;">
-            Restart Level
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+        padding: 40px;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        border: 3px solid #fff;
+        max-width: 400px;
+        margin: 0 auto;
+        animation: slideIn 0.5s ease-out;
+    ">
+        <div style="
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        ">
+            💀
+        </div>
+        
+        <h1 style="
+            color: #fff;
+            font-size: 2.5em;
+            margin: 0 0 15px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            font-family: 'Arial Black', sans-serif;
+        ">GAME OVER</h1>
+        
+        <p style="
+            color: #ffeb3b;
+            font-size: 1.2em;
+            margin: 15px 0;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        ">${event.detail.reason}</p>
+        
+        <div style="
+            background: rgba(255,255,255,0.2);
+            border-radius: 15px;
+            padding: 15px;
+            margin: 20px 0;
+            border: 2px solid rgba(255,255,255,0.3);
+        ">
+            <p style="
+                color: #fff;
+                font-size: 1.4em;
+                margin: 0;
+                font-weight: bold;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            ">Final Score: <span style="color: #4caf50; font-size: 1.2em;">${score}</span></p>
+        </div>
+        
+        <button id="restartButton" style="
+            background: linear-gradient(45deg, #4caf50, #45a049);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+        " 
+        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 7px 20px rgba(0,0,0,0.4)'"
+        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 5px 15px rgba(0,0,0,0.3)'"
+        onmousedown="this.style.transform='translateY(1px)'"
+        onmouseup="this.style.transform='translateY(-2px)'">
+            🔄 Restart Level
         </button>
-    `;
+    </div>
+    
+    <style>
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+    </style>
+`;
 
     document.body.appendChild(gameOverScreen);
 
@@ -310,6 +448,11 @@ async function init() {
 
     // Add game over event listener
     window.addEventListener('gameOver', handleGameOver);
+
+    // Play background music for the current level only if we have music to play
+    if (settings.music) {
+        playMusic(settings.music);
+    }
 
     if (!animationFrameId) {
         console.log("Animasyon döngüsü başlatılıyor.");
