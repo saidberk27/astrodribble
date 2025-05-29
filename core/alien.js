@@ -5,9 +5,9 @@ import { scene } from './scene.js';
 export class Alien {
     constructor(player) {
         this.mesh = new THREE.Object3D();
-        this.mesh.position.set(0, 0, -10); // Start at the opposite end of the court
+        this.mesh.position.set(0, 0, -12); // Start at the opposite end of the court
         this.direction = new THREE.Vector3(0, 0, 1);
-        this.speed = 0.05; // Slower than player
+        this.speed = 0.015; // Slower than player
         this.player = player; // Reference to player for chasing
 
         this.velocityY = 0;

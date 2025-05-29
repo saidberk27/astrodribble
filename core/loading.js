@@ -84,16 +84,16 @@ function createLoadingScreenElements() {
 
     // İpuçları (isteğe bağlı)
     const tips = [
-        "Tip: Explore the court for hidden secrets!",
-        "Tip: Master your jump shot for extra points!",
         "Tip: The alien is always watching...",
-        "Tip: Use 'F' to pick up the ball, 'X' for auto-shot."
+        "Tip: Use 'F' to pick up the ball, 'X' for auto-shot.",
+        "Fun Fact: Dr Öner Barut Loves Band Matrix",
     ];
     const tipElement = document.createElement('div');
     tipElement.style.color = 'rgba(255, 255, 255, 0.7)';
     tipElement.style.fontFamily = 'Georgia, serif';
     tipElement.style.fontSize = '0.9em';
     tipElement.style.marginTop = '25px';
+    tipElement.style.marginBottom = '25px';
     tipElement.style.maxWidth = '400px';
     tipElement.style.textAlign = 'center';
     tipElement.style.fontStyle = 'italic';
