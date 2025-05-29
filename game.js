@@ -4,12 +4,9 @@ import { createLights, createCourt, createHoops } from './core/world.js';
 import { createPlayer, setupPlayerControls } from './core/player.js';
 import { Ball } from './core/ball.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'; // <-- YENİ IMPORT
 import * as THREE from 'three';
-
-
 
 export const gltf_loader = new GLTFLoader();
 export const fbx_loader = new FBXLoader(); // <-- YENİ LOADER
@@ -52,7 +49,7 @@ export const levelSettings = {
 };
 
 const rgbeLoader = new RGBELoader(); // RGBELoader'ı bir kere oluştur
-const player = new createPlayer();
+
 function setEnvironment(settings) {
     if (settings.hdriPath) {
         rgbeLoader.load(settings.hdriPath, function (texture) {
@@ -119,12 +116,12 @@ function cleanupScene() {
         if (child.type !== "PerspectiveCamera" &&
             child.type !== "DirectionalLight" &&
             child.type !== "AmbientLight") {
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) {
+            if(child.geometry) child.geometry.dispose();
+            if(child.material) {
                 if (Array.isArray(child.material)) {
-                    child.material.forEach(material => { if (material.dispose) material.dispose(); });
+                    child.material.forEach(material => { if(material.dispose) material.dispose(); });
                 } else {
-                    if (child.material.dispose) child.material.dispose();
+                    if(child.material.dispose) child.material.dispose();
                 }
             }
             globalScene.remove(child);
@@ -206,7 +203,7 @@ function init() {
     scoreElement = document.getElementById('score');
     updateScoreDisplay();
 
-    const player = new createPlayer();
+    const player = createPlayer();
     // player.js içindeki loadModel, modeli globalScene'e ekliyor.
 
     ball = new Ball(settings.gravity);
@@ -242,23 +239,18 @@ function init() {
     });
 
     if (!animationFrameId) {
-        console.log("Animasyon döngüsü başlatılıyor.");
-        animate(renderer, globalScene, camera);
+         console.log("Animasyon döngüsü başlatılıyor.");
+         animate(renderer, globalScene, camera);
     }
 }
 
 function animate(renderer, sceneRef, cameraRef) {
     animationFrameId = requestAnimationFrame(() => animate(renderer, sceneRef, cameraRef));
-
     if (updatePlayerMovement) {
         updatePlayerMovement();
     }
-    if (player && typeof player.update === 'function') {
-        player.update();
-    }
-    if (ball && typeof ball.update === 'function') {
+    if (ball) {
         ball.update();
-
         ball.checkHoopCollision(hoops, incrementScore);
     }
     updateCameraPosition();
@@ -267,4 +259,3 @@ function animate(renderer, sceneRef, cameraRef) {
 
 // Oyunu başlat
 init();
-

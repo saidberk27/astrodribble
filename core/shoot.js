@@ -1,7 +1,4 @@
-// shooting.js
-
 import * as THREE from 'three';
-
 import { scene } from './scene.js';
 import { Ball } from './ball.js';
 
@@ -37,7 +34,6 @@ export class ShootingSystem {
 
         this.player = playerRef; // <-- Oyuncu referansını sakla
 
-
         this.setupMouseListeners();
         this.updatePowerBar();
     }
@@ -55,7 +51,6 @@ export class ShootingSystem {
         powerLevel.style.height = '0%'; powerBarContainer.appendChild(powerLevel);
         document.body.appendChild(powerBarContainer); return powerBarContainer;
     }
-
 
     setupMouseListeners() {
         window.addEventListener('mousemove', (event) => {
@@ -174,7 +169,6 @@ export class ShootingSystem {
 
         this.throwPower = 0;
         this.updatePowerBar();
-
         this.hideTrajectory();
         this.isAimAssisted = false;
     }
@@ -277,5 +271,4 @@ export class ShootingSystem {
         if (this.powerBarElement && this.powerBarElement.parentNode) { this.powerBarElement.parentNode.removeChild(this.powerBarElement); }
         this.hideTrajectory();
     }
-
 }

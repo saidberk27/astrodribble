@@ -1,11 +1,6 @@
 import * as THREE from 'three';
 // GLTFLoader'ı buradan kaldırıyoruz, game.js'den gelecek.
 import { scene } from './scene.js';
-import { world, createHoopPhysics, createGroundPhysics, initPhysics } from './physics.js';
-import { courtWidth, courtLength } from './ball.js';
-
-// Fizik motorunu başlat
-initPhysics();
 
 export function createLights() {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -19,10 +14,8 @@ export function createLights() {
     scene.add(ambientLight);
 }
 
-
 export function createCourt(texturePath = 'textures/court_texture.jpg') { // texturePath parametresi eklendi
     const courtGeometry = new THREE.PlaneGeometry(15.24, 28.65);
-
     const textureLoader = new THREE.TextureLoader();
 
     // Doku yolunu parametreden al
@@ -33,16 +26,11 @@ export function createCourt(texturePath = 'textures/court_texture.jpg') { // tex
         map: courtTexture,
         side: THREE.DoubleSide
     });
-
-
     const court = new THREE.Mesh(courtGeometry, courtMaterial);
     court.rotation.x = -Math.PI / 2;
     court.receiveShadow = true;
     scene.add(court); // scene'i global olarak (scene.js'den import ederek) kullandığınızı varsayıyorum
 }
-
-// Saha için fizik gövdesi oluştur
-createGroundPhysics(courtWidth, courtLength);
 
 
 // createHoops fonksiyonunu güncelliyoruz
@@ -59,7 +47,7 @@ export function createHoops(hoopsArray, gltf_loader) { // hoopsArray ve gltf_loa
     const hoop2_Z_offset = 0.6; // Örneğin, -0.1 veya +0.1 gibi değerler deneyin
     // ------------------------------------
 
-    gltf_loader.load(
+ gltf_loader.load(
         'models/basketball_hoop2.glb',
         function (gltf) {
             // --- Birinci Pota ---
@@ -103,7 +91,6 @@ export function createHoops(hoopsArray, gltf_loader) { // hoopsArray ve gltf_loa
             hoopsArray.push(hoop2);
 
             console.log("Potalar ve çarpışma çemberleri (düzeltilmiş) oluşturuldu.");
-
         },
         function (xhr) {
             console.log((xhr.loaded / xhr.total * 100) + '% pota modeli yüklendi');
