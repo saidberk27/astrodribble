@@ -90,8 +90,8 @@ export class Ball {
                 this.velocity.z *= 0.8;
 
                 if (this.velocity.length() < 0.05) { // Neredeyse durduysa
-                   this.isMoving = false;
-                   this.velocity.set(0, 0, 0);
+                    this.isMoving = false;
+                    this.velocity.set(0, 0, 0);
                 }
             }
             // Y Ekseni Sınırları (Tavan)
@@ -114,7 +114,7 @@ export class Ball {
             this.velocity.copy(direction);
             // Atıştan hemen sonra skor kontrolünü aktifleştir
             this.hasScored = false;
-            if(this.scoreTimeout) clearTimeout(this.scoreTimeout);
+            if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
         }
     }
 
@@ -127,7 +127,7 @@ export class Ball {
         }
     }
 
-    checkHoopCollision(hoops, onScoreCallback) { // onScoreCallback eklendi
+    checkHoopCollision(hoops, onScoreCallback) {
         if (!this.isMoving || this.hasScored) return;
 
         hoops.forEach(hoop => {
@@ -136,31 +136,39 @@ export class Ball {
 
             const hoopY = hoopCollisionMesh.position.y;
             const hoopRadius = hoopCollisionMesh.geometry.parameters.radius; // Torus'un ana yarıçapı
+            const collisionTolerance = 0.5; // Yeni: Çarpışma toleransı (bu değeri artırarak kolaylaştırın)
+            const effectiveHoopRadius = hoopRadius + collisionTolerance; // Etkili yarıçap
 
             // Topun küresi, pota çemberinin sınır kutusu ile kesişiyor mu? (Hızlı ön kontrol)
             const hoopBBox = new THREE.Box3().setFromObject(hoopCollisionMesh);
-            if (hoopBBox.intersectsSphere(this.ballSphere)) {
+            // hoopBBox'ı da effectiveHoopRadius'a göre genişletmek gerekebilir
+            // Ancak bu, topun X ve Z koordinatları kontrolü ile daha iyi yapılır.
+
+            // Topun X ve Z koordinatlarının pota çemberinin içinde olup olmadığını kontrol edin
+            const distanceToHoopCenterXZ = Math.sqrt(
+                Math.pow(this.mesh.position.x - hoopCollisionMesh.position.x, 2) +
+                Math.pow(this.mesh.position.z - hoopCollisionMesh.position.z, 2)
+            );
+
+            if (distanceToHoopCenterXZ < effectiveHoopRadius) { // Yeni: Etkili yarıçapı kullan
                 // Daha detaylı kontrol:
                 // 1. Top aşağı doğru mu hareket ediyor?
                 // 2. Top bir önceki karede pota çemberinin ÜSTÜNDE miydi?
                 // 3. Top şimdiki karede pota çemberinin ALTINDA veya HİZASINDA mı?
-                // 4. Topun X ve Z koordinatları çemberin içinde mi?
+                // 4. Topun X ve Z koordinatları çemberin içinde mi? (Yukarıda kontrol edildi)
                 if (this.velocity.y < 0 &&
                     this.previousPosition.y > hoopY &&
-                    this.mesh.position.y <= hoopY &&
-                    Math.abs(this.mesh.position.x - hoopCollisionMesh.position.x) < hoopRadius &&
-                    Math.abs(this.mesh.position.z - hoopCollisionMesh.position.z) < hoopRadius)
-                {
+                    this.mesh.position.y <= hoopY) {
                     this.hasScored = true;
 
                     if (onScoreCallback) {
-                        onScoreCallback(); // Skoru artırmak için game.js'deki fonksiyonu çağır
+                        onScoreCallback();
                     }
 
                     if (this.scoreTimeout) clearTimeout(this.scoreTimeout);
                     this.scoreTimeout = setTimeout(() => {
                         this.hasScored = false;
-                    }, 2000); // Aynı atışla tekrar skor olmasın diye 2 saniye bekle
+                    }, 2000);
                 }
             }
         });

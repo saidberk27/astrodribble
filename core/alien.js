@@ -7,7 +7,7 @@ export class Alien {
         this.mesh = new THREE.Object3D();
         this.mesh.position.set(0, 0, -12); // Start at the opposite end of the court
         this.direction = new THREE.Vector3(0, 0, 1);
-        this.speed = 0.015; // Slower than player
+        this.speed = 0.0; // Slower than player
         this.player = player; // Reference to player for chasing
 
         this.velocityY = 0;
@@ -59,7 +59,7 @@ export class Alien {
                             if (Array.isArray(child.material)) {
                                 child.material = child.material.map(mat => {
                                     const newMat = mat.clone ? mat.clone() : new THREE.MeshStandardMaterial().copy(mat);
-                                    newMat.color.setHex(0xff6666);
+                                    newMat.color.setHex(0x00ff00);
                                     return newMat;
                                 });
                             } else {
